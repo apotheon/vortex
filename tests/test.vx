@@ -1,0 +1,24 @@
+let rec fact = fn n ->
+    if n == 0 ->
+        1
+    else ->
+        n * fact(n - 1)
+
+let fun = fn a, b, c -> a + b * c
+
+let rec tail = fn a, b ->
+    tail(tail(tail(a + 1), tail(b + 1)), tail(a + b))
+
+print("hello world!")
+print(fact(6))
+print(fun(5, 10, 15))
+
+let defargs = fn a, b, c = 5, d = "hello", e = c * c ->
+    print(a, b, c, d, e)
+
+defargs(66)
+defargs(66, 67)
+defargs(66, 67, 169)
+defargs(66, 67, 170, "world")
+defargs(66, 67, 171, "world", 81)
+defargs(66, 67, nil, "hai", nil)

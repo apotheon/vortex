@@ -1,21 +1,29 @@
---[[ Buttscript 0.1 main program
+--[[ Vortex 0.1 main program
 
  Author: q66 <quaker66@gmail.com>
  Available under the terms of the MIT license.
 ]]
 
-METADATA = {
-    version = 0.01,
-    author  = "Daniel 'q66' Kolesa"
+META = {
+    general = {
+        version = 0.01
+    },
+    lexer = {
+    },
+    parser = {
+    },
+    cgen = {
+        indent = 4
+    }
 }
 
 local util   = require("util")
 local parser = require("parser")
 
 local help = function(args)
-    print("Buttscript compiler v" .. METADATA.version)
+    print("Vortex compiler v" .. META.general.version)
     print("Usage:")
-    print("    " .. args[-1] .. " " .. args[0] .. " [files.bs]")
+    print("    " .. args[-1] .. " " .. args[0] .. " [files.vx]")
 end
 
 local compile_all = function(args)
@@ -28,11 +36,11 @@ local compile_all = function(args)
         end
 
         local  ofname
-        local  has_ext = ifname:find("%.bs")
+        local  has_ext = ifname:find("%.vx")
         if not has_ext then
             ofname = ifname .. ".lua"
         else
-            ofname = ifname:gsub("%.bs", ".lua")
+            ofname = ifname:gsub("%.vx", ".lua")
         end
 
         local  ws = io.open(ofname, "w")

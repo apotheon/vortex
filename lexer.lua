@@ -1,4 +1,4 @@
---[[ Buttscript 0.1 lexer
+--[[ Vortex 0.1 lexer
 
  Author: q66 <quaker66@gmail.com>
  Inspired by Lua's lexer (most notably in string parsing)
@@ -16,39 +16,15 @@ local is_alnum         = util.is_alnum
 local is_digit         = util.is_digit
 local fatal            = util.fatal
 
--- all of the core buttscript keywords
+-- all of the core vortex keywords
 local keywords = {
-    -- general
-    ["fn"    ] = true,
-    ["let"   ] = true,
-    ["rec"   ] = true,
-    ["goto"  ] = true,
-    ["ret"   ] = true,
-    ["module"] = true,
-    ["yield" ] = true,
-
-    -- conditions
-    ["if"   ] = true,
-    ["else" ] = true,
-    ["match"] = true,
-
-    -- loops
-    ["for"     ] = true,
-    ["in"      ] = true,
-    ["while"   ] = true,
-    ["do"      ] = true,
-    ["break"   ] = true,
-    ["continue"] = true,
-
-    -- values
-    ["true" ] = true,
-    ["false"] = true,
-    ["nil"  ] = true,
-    
-    -- operators
-    ["and"] = true,
-    ["or" ] = true,
-    ["not"] = true
+    ["again"] = true, ["and"  ] = true, ["break"] = true, ["case" ] = true,
+    ["cfn"  ] = true, ["coro" ] = true, ["do"   ] = true, ["else" ] = true,
+    ["false"] = true, ["fn"   ] = true, ["for"  ] = true, ["glob" ] = true,
+    ["goto" ] = true, ["if"   ] = true, ["in"   ] = true, ["let"  ] = true,
+    ["match"] = true, ["mod"  ] = true, ["nil"  ] = true, ["not"  ] = true,
+    ["or"   ] = true, ["rec"  ] = true, ["ret"  ] = true, ["seq"  ] = true,
+    ["true" ] = true, ["while"] = true, ["yield"] = true
 }
 
 local lex_error = function(ls, msg, value)
@@ -276,7 +252,7 @@ local lex = function(ls, token)
             next_char(ls)
             if ls.current ~= "=" then return "+" end
             next_char(ls)
-            return "!="
+            return "+="
         -- -, -=, ->
         elseif curr == "-" then
             next_char(ls)
@@ -329,6 +305,7 @@ local lex = function(ls, token)
             if ls.current == "." then
                 next_char(ls)
                 if ls.current == "." then
+                    next_char(ls)
                     return "..."
                 end
                 return ".."
@@ -367,7 +344,7 @@ local lex = function(ls, token)
             end
 
         -- short strings
-        elseif curr == "\"" or curr == "'" then
+        elseif curr == '"' or curr == "'" then
             local buf  = {}
             read_string(ls, curr, buf)
             token.value = table.concat(buf)
@@ -408,11 +385,11 @@ local State_MT = {
             self.last_line = self.line_number
 
             local tok = self.token
-            local lah = self.lookahead
+            local lah = self.ltoken
 
-            if lah.name ~= "<eos>" then
+            if lah.name then
                 tok.name, tok.value = lah.name, lah.value
-                lah.name, lah.value = "<eos>", nil
+                lah.name, lah.value = nil, nil
             else
                 tok.name = lex(self, tok)
             end
@@ -422,9 +399,7 @@ local State_MT = {
 
         -- retrieves a lookahead token when required
         lookahead = function(self)
-            local  lah = self.lookahead
-            assert(lah.name == "<eos>")
-
+            local lah = self.ltoken
             lah.name = lex(self, lah)
             return lah.name
         end
@@ -440,7 +415,7 @@ return {
                 name    = nil,      -- semantic value (i.e. a string literal)
                 value   = nil
             },
-            lookahead   = {         -- the lookahead token, used when required
+            ltoken   = {         -- the lookahead token, used when required
                 name    = nil,
                 value   = nil 
             },
