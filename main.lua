@@ -25,7 +25,19 @@ local parser = require("parser")
 local help = function(args)
     print("Vortex compiler v" .. META.general.version)
     print("Usage:")
-    print("    " .. args[-1] .. " " .. args[0] .. " [-o opt=val] [files.vx]")
+    print("  " .. args[-1] .. " " .. args[0] .. " [-o opt=val] [files.vx]")
+end
+
+local test_opt = function(section, field, value)
+    local sect = META[section]
+    if not sect or sect[field] == nil then return nil end
+
+    local t = type(sect[field])
+    if t == "number" then
+        return tonumber(value)
+    elseif t == "string" then
+        return tostring(value)
+    end
 end
 
 local compile_all = function(args)
@@ -35,7 +47,12 @@ local compile_all = function(args)
         local v = args[i]
         if type(v) == "table" then
             local key, val = v[1], v[2]
-            key:gsub("(.+)%.(.+)", function(a, b) META[a][b] = val end)
+            key:gsub("(.+)%.(.+)", function(a, b)
+                if not test_opt(a, b, val) then
+                    util.fatal("Invalid argument: -o " .. key .. "=" .. val)
+                end
+                META[a][b] = val
+            end)
         else
             local  ifname = v
             local  rs = io.open(ifname, "r")

@@ -22,3 +22,26 @@ defargs(66, 67, 169)
 defargs(66, 67, 170, "world")
 defargs(66, 67, 171, "world", 81)
 defargs(66, 67, nil, "hai", nil)
+
+let block1 = fn a -> {
+    print("foo")
+    let x = a * a
+    x
+}
+
+// fn a, b -> { ... } is a valid form as well
+let block2 = fn a, b {
+    print("hello")
+    print("world")
+    a + b, a - b, a * b, a / b
+}
+
+/* again, fn -> { ... } is a valid form
+ * let's test long comments here when at it
+ */
+let rec block_tail = fn {
+    block_tail()
+}
+
+print(block1(5))
+print(block2(6, 7))

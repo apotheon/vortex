@@ -150,6 +150,36 @@ local Value_Expr = util.Object:clone {
     end
 }
 
+local Block_Expr = util.Object:clone {
+    name = "Block_Expr",
+
+    __init = function(self, exprs)
+        self.exprs = exprs
+    end,
+
+    -- XXX: works only for functions right now
+    generate = function(self, si)
+        local exprs = self.exprs
+        local sym   = unique_sym("block")
+        local len   = #exprs
+
+        for i = 1, len - 1 do
+            exprs[i]:generate(si)
+        end
+
+        local last = exprs[len]
+        if not last.is_a then
+            local exps = {}
+            for i = 1, #last do
+                exps[#exps + 1] = last[i]:generate(si)
+            end
+            si:push(gen_ret(table.concat(exps, ", ")))
+        else
+            si:push(gen_ret(exprs[len]:generate(si, true)))
+        end
+    end
+}
+
 local Binary_Expr = util.Object:clone {
     name = "Binary_Expr",
 
@@ -257,7 +287,11 @@ local Function_Expr = util.Object:clone {
         end
 
         -- avoid temps
-        fs:push(gen_ret(self.body:generate(fs, true)))
+        if self.body:is_a(Block_Expr) then
+            self.body:generate(fs)
+        else
+            fs:push(gen_ret(self.body:generate(fs, true)))
+        end
         return gen_fun(gen_seq(np), fs)
     end
 }
@@ -368,6 +402,10 @@ local parse_subexpr = function(ls)
         local v = parse_prefixexpr(ls)
         if ls.token.name == "(" then
             ls:get()
+            if ls.token.name == ")" then
+                ls:get()
+                return Call_Expr(v, {})
+            end
             local list = parse_exprlist(ls)
             assert_tok(ls, ")")
             ls:get()
@@ -416,8 +454,13 @@ end
 local endargs = { ["<ident>"] = true, ["..."] = true }
 local parse_arglist = function(ls)
     local tok = ls.token
+    local tn  = tok.name
 
-    if tok.name == "..." then
+    if tn == "->" or tn == "{" then
+        return {}, {}
+    end
+
+    if tn == "..." then
         return { "..." }, {}
     end
 
@@ -448,9 +491,46 @@ local parse_arglist = function(ls)
     return ids, defs
 end
 
+local parse_block = function(ls)
+    ls:get()
+    local tok, exprs = ls.token, {}
+
+    if tok.name == "}" then
+        ls:get()
+        return Block_Expr(exprs)
+    end
+
+    repeat
+        exprs[#exprs + 1] = parse_expr(ls)
+    until tok.name == "," or tok.name == "}"
+
+    if tok.name == "}" then
+        ls:get()
+        return Block_Expr(exprs)
+    end
+
+    -- we had an expression list at the end
+    ls:get()
+
+    local elist = { exprs[#exprs] }
+    exprs[#exprs] = elist
+
+    repeat
+        elist[#elist + 1] = parse_expr(ls)
+    until (tok.name ~= "," or tok.name == "}") or not ls:get()
+
+    assert_tok(ls, "}")
+    ls:get()
+    return Block_Expr(exprs)
+end
+
 local parse_function = function(ls)
     ls:get()
     local ids, defs = parse_arglist(ls)
+
+    if ls.token.name == "{" then
+        return Function_Expr(ids, defs, parse_block(ls))
+    end
 
     assert_tok(ls, "->")
     ls:get()
@@ -518,6 +598,8 @@ parse_expr = function(ls)
         return parse_sequence(ls)
     elseif name == "if" then
         return parse_if(ls)
+    elseif name == "{" then
+        return parse_block(ls)
     else
         return parse_binexpr(ls)
     end
