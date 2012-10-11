@@ -56,12 +56,18 @@ local concat = table.concat
 
 local Scope = util.Object:clone {
     __init = function(self, fs, indent)
-        self.body, self.fstate, self.indent = {}, fs, indent
+        self.body, self.fstate, self.indent, self.locked
+            = {}, fs, indent, false
     end,
 
     push = function(self, stat)
+        if self.locked then return nil end
         local body = self.body
         body[#body + 1] = stat
+    end,
+
+    lock = function(self)
+        self.locked = true
     end,
 
     build = function(self)
@@ -150,6 +156,27 @@ local Value_Expr = util.Object:clone {
     end
 }
 
+local Return_Expr = util.Object:clone {
+    name = "Return_Expr",
+
+    __init = function(self, exprs)
+        self.exprs = exprs
+    end,
+
+    generate = function(self, si, notmp)
+        local exprs = self.exprs
+        local len   = #exprs
+
+        local exps = {}
+        for i = 1, len do
+            exps[#exps + 1] = exprs[i]:generate(si, i == len)
+        end
+        si:push(gen_ret(gen_seq(exps)))
+        si:lock()
+        return "nil"
+    end
+}
+
 local Block_Expr = util.Object:clone {
     name = "Block_Expr",
 
@@ -166,17 +193,7 @@ local Block_Expr = util.Object:clone {
         for i = 1, len - 1 do
             exprs[i]:generate(si)
         end
-
-        local last = exprs[len]
-        if not last.is_a then
-            local exps = {}
-            for i = 1, #last do
-                exps[#exps + 1] = last[i]:generate(si)
-            end
-            si:push(gen_ret(table.concat(exps, ", ")))
-        else
-            si:push(gen_ret(exprs[len]:generate(si, true)))
-        end
+        si:push(gen_ret(exprs[len]:generate(si, true)))
     end
 }
 
@@ -303,31 +320,20 @@ local If_Expr = util.Object:clone {
         self.cond, self.tval, self.fval = cond, tval, fval
     end,
 
-    generate = function(self, si, notmp)
-        local fun = notmp and si:is_a(Function_State)
+    generate = function(self, si)
         local sym = not fun and unique_sym("if") or nil
 
         local tsc = Scope(si.fstate, si.indent + 1)
-        if fun then
-            tsc:push(gen_ret(self.tval:generate(tsc, true)))
-        else
-            tsc:push(gen_ass(sym, self.tval:generate(tsc)))
-        end
+        tsc:push(gen_ass(sym, self.tval:generate(tsc)))
 
         local fsc
         local fval = self.fval
         if fval then
             fsc = Scope(si.fstate, si.indent + 1)
-            if fun then
-                fsc:push(gen_ret(fval:generate(fsc, true)))
-            else
-                fsc:push(gen_ass(sym, fval:generate(fsc)))
-            end
+            fsc:push(gen_ass(sym, fval:generate(fsc)))
         end
 
-        if not fun then
-            si:push(gen_local(sym))
-        end
+        si:push(gen_local(sym))
         si:push(gen_if(self.cond:generate(si), tsc, fsc))
 
         return sym
@@ -513,22 +519,7 @@ local parse_block = function(ls)
 
     repeat
         exprs[#exprs + 1] = parse_expr(ls)
-    until tok.name == "," or tok.name == "}"
-
-    if tok.name == "}" then
-        ls:get()
-        return Block_Expr(exprs)
-    end
-
-    -- we had an expression list at the end
-    ls:get()
-
-    local elist = { exprs[#exprs] }
-    exprs[#exprs] = elist
-
-    repeat
-        elist[#elist + 1] = parse_expr(ls)
-    until (tok.name ~= "," or tok.name == "}") or not ls:get()
+    until tok.name == "}"
 
     assert_tok(ls, "}")
     ls:get()
@@ -577,6 +568,18 @@ local parse_if = function(ls)
     return If_Expr(cond, tval, nil)
 end
 
+local parse_return = function(ls)
+    ls:get()
+    if ls.token.name == "(" then
+        ls:get()
+        local exprs = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        return Return_Expr(exprs)
+    end
+    return Return_Expr({ parse_expr(ls) })
+end
+
 -- main expression parsing function
 parse_expr = function(ls)
     local tok  = ls.token
@@ -609,6 +612,8 @@ parse_expr = function(ls)
         return parse_sequence(ls)
     elseif name == "if" then
         return parse_if(ls)
+    elseif name == "return" then
+        return parse_return(ls)
     elseif name == "{" then
         return parse_block(ls)
     else
