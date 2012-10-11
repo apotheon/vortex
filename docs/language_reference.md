@@ -157,8 +157,8 @@ interchangeably with parenthesised expressions (for example,
 #### Blocks and chunks
     ident_list ::= ident { ',' ident }
     expr_list  ::= expr  { ',' expr  }
-    chunk      ::= { expr } [ expr_list ]
-    block      ::= '{' { expr } [ expr_list ] '}'
+    chunk      ::= { expr }
+    block      ::= '{' { expr } '}'
     expr       ::= ';' | block
 A chunk is a sequence of expressions. A Vortex source file is a chunk. Chunks
 behave like anonymous functions. They can have local variables, they can have
@@ -173,8 +173,6 @@ using the `ret` keyword.
 A semicolon is an expression evaluating to nil. It can be used to separate
 statement-form expressions in blocks and chunks when required.
 
-Both chunks and blocks can be ended with an expression list in addition to
-simple expressions. They then evaluate to multiple values.
 #### Variables
     variable      ::= ident | prefix_expr '[' expr ']' | prefix_expr '.' ident
     variable_list ::= variable { ',' variable } | prefix_expr '[' expr_list ']'
