@@ -1,8 +1,17 @@
+/* regular factorial */
 let rec fact = fn n ->
     if n == 0 ->
         1
     else ->
         n * fact(n - 1)
+
+/* tail recursive factorial */
+let rec fact_tail = fn n, acc = 1 {
+    if n == 0 ->
+        acc
+    else ->
+        fact_tail(n - 1, n * acc)
+}
 
 let fun = fn a, b, c -> a + b * c
 
@@ -11,6 +20,7 @@ let rec tail = fn a, b ->
 
 print("hello world!")
 print(fact(6))
+print(fact_tail(6))
 print(fun(5, 10, 15))
 
 let defargs = fn a, b, c = 5, d = "hello", e = c * c ->

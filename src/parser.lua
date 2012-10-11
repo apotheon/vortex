@@ -303,20 +303,31 @@ local If_Expr = util.Object:clone {
         self.cond, self.tval, self.fval = cond, tval, fval
     end,
 
-    generate = function(self, si)
-        local sym = unique_sym("if")
+    generate = function(self, si, notmp)
+        local fun = notmp and si:is_a(Function_State)
+        local sym = not fun and unique_sym("if") or nil
 
         local tsc = Scope(si.fstate, si.indent + 1)
-        tsc:push(gen_ass(sym, self.tval:generate(tsc)))
+        if fun then
+            tsc:push(gen_ret(self.tval:generate(tsc, true)))
+        else
+            tsc:push(gen_ass(sym, self.tval:generate(tsc)))
+        end
 
         local fsc
         local fval = self.fval
         if fval then
             fsc = Scope(si.fstate, si.indent + 1)
-            fsc:push(gen_ass(sym, fval:generate(fsc)))
+            if fun then
+                fsc:push(gen_ret(fval:generate(fsc, true)))
+            else
+                fsc:push(gen_ass(sym, fval:generate(fsc)))
+            end
         end
 
-        si:push(gen_local(sym))
+        if not fun then
+            si:push(gen_local(sym))
+        end
         si:push(gen_if(self.cond:generate(si), tsc, fsc))
 
         return sym
