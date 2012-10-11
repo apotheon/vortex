@@ -1,10 +1,16 @@
---[[ Vortex 0.1 utilities
+--[[ Vortex utility library
+    A bunch of utilities used across the Vortex compiler.
 
- Author: q66 <quaker66@gmail.com>
- Available under the terms of the MIT license.
+    Author: q66 <quaker66@gmail.com>
+    License: MIT
 ]]
 
+-- support Lua and LuaJIT
 local bit = require (_VERSION == "Lua 5.2" and "bit32" or "bit")
+
+--
+-- stream utilities
+--
 
 local strstream = function(str)
     return string.gmatch(str, ".")
@@ -21,46 +27,41 @@ local ifstream = function(f)
     return strstream(str)
 end
 
-local identchars = {
-    ["_"] = true
-}
+--
+-- character utilities
+--
 
-local keywordchars = {
-    ["@"] = true,
-    ["#"] = true
-}
-
-local identkeywordchars = {
-    ["_"] = true,
-    ["@"] = true,
-    ["#"] = true
-}
-
+-- is the given char ascii?
 local is_ascii = function(ch)
     local   i = ch:byte()
     return (i >= 0 and i <= 127)
 end
 
+-- is it alphabetic?
 local is_alpha = function(ch)
     local   i = ch:byte()
     return (i >= 65 and i <= 90) or (i >= 97 and i <= 122)
 end
 
+-- or alphanumeric?
 local is_alnum = function(ch)
     local   i = ch:byte()
     return (i >= 48 and i <= 57) or (i >= 65 and i <= 90)
         or (i >= 97 and i <= 122)
 end
 
+-- is it a digit?
 local is_digit = function(ch)
     local   i = ch:byte()
     return (i >= 48 and i <= 57)
 end
 
-local io_stderr = io.stderr
-local io_write  = io.write
+--
+-- object system
+--
 
 local Object = {
+    -- instantiation of clones
     __call = function(self, ...)
         local r = {
             __index    = self,
@@ -79,6 +80,7 @@ local Object = {
         return r
     end,
 
+    -- cloning of any clone
     clone = function(self, tbl)
         if not tbl then
             tbl = {
@@ -100,6 +102,8 @@ local Object = {
         return tbl
     end,
 
+    -- checks if an object is a child of another object (deep down
+    -- to the structure, checks all the parents)
     is_a = function(self, base)
         if self == base then return true end
 
@@ -117,6 +121,7 @@ local Object = {
     end
 }
 
+-- is the given thing an array?
 local is_array = function(tbl)
     local i = #tbl
     for _ in pairs(tbl) do
@@ -128,6 +133,7 @@ local is_array = function(tbl)
     return true, #tbl
 end
 
+-- a neat table serializer
 local serialize
 serialize = function(tbl, pretty, indent)
     pretty = pretty or false
@@ -235,6 +241,7 @@ do
     local bxor, band, rshift = bit.bxor, bit.band, bit.rshift
     local floor = math.floor
 
+    -- seeds a number for the RNG
     randomseed = function(x)
         local i
 
@@ -248,6 +255,8 @@ do
     end
 
     local i = 4095
+
+    -- a PRNG - complementary MWC
     random = function()
         local t, a = nil, 18782
         local x, r = nil, 0xFFFFFFFE
@@ -267,6 +276,7 @@ do
     end
 end
 
+-- generates a random number from a to b
 local rnd = function(a, b)
     if not b then
         return random() % a
@@ -287,11 +297,13 @@ local hash = function(ch)
     return "_" .. ch:byte() .. "d"
 end
 
+-- "hashes" a string so that it becomes a valid Lua identifier
 local hash_sym = function(sym)
     local r = sym:gsub("[^a-zA-Z0-9_]", hash)
     return r
 end
 
+-- generates an unique symbol name with a given suffix
 local unique_sym = function(suffix)
     local st = syms[suffix]
     if not st then
@@ -311,15 +323,20 @@ local unique_sym = function(suffix)
     return tc { "__", uq, "_", hash_sym(suffix) }
 end
 
+local io_stderr = io.stderr
+local io_write  = io.write
+
 return {
     file_istream  = ifstream,
     file_ostream  = ofstream,
     string_stream = strstream,
 
+    -- checks whether the value is a newline character (CR or LF)
     is_newline = function(ch)
         return (ch == "\n" or ch == "\r")
     end,
 
+    -- checks whether the value is a whitespace 
     is_white = function(ch)
         return (ch == " " or ch == "\f" or ch == "\t" or ch == "\v")
     end,
@@ -329,18 +346,18 @@ return {
     is_alnum = is_alnum,
     is_digit = is_digit,
 
+    -- checks if the given character can be in an identifier
     is_ident = function(ch)
-        return is_alnum(ch) or (ch == "_")
+        return is_alnum(ch) or (ch == "_") or (ch == "?")
     end,
 
+    -- checks if the given character can be in a keyword
     is_keyword = function(ch)
-        return is_alnum(ch) or (keywordchars[ch] ~= nil)
+        return is_alnum(ch) or (ch == "_") or (ch == "?")
+                            or (ch == "@") or (ch == "#")
     end,
 
-    is_ident_keyword = function(ch)
-        return is_alnum(ch) or (identkeywordchars[ch] ~= nil)
-    end,
-
+    -- fatal error, prints to stderr and exits
     fatal = function(msg)
         io_stderr:write(msg, "\n")
         os.exit(1)

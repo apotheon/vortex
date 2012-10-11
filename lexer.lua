@@ -8,23 +8,26 @@
 
 local util = require("util")
 
-local is_newline       = util.is_newline
-local is_white         = util.is_white
-local is_ascii         = util.is_ascii
-local is_ident_keyword = util.is_ident_keyword
-local is_alnum         = util.is_alnum
-local is_digit         = util.is_digit
-local fatal            = util.fatal
+local is_newline = util.is_newline
+local is_white   = util.is_white
+local is_ascii   = util.is_ascii
+local is_ident   = util.is_ident
+local is_keyword = util.is_keyword
+local is_alnum   = util.is_alnum
+local is_digit   = util.is_digit
+local fatal      = util.fatal
 
 -- all of the core vortex keywords
 local keywords = {
-    ["again"] = true, ["and"  ] = true, ["break"] = true, ["case" ] = true,
-    ["cfn"  ] = true, ["coro" ] = true, ["do"   ] = true, ["else" ] = true,
-    ["false"] = true, ["fn"   ] = true, ["for"  ] = true, ["glob" ] = true,
-    ["goto" ] = true, ["if"   ] = true, ["in"   ] = true, ["let"  ] = true,
-    ["match"] = true, ["mod"  ] = true, ["nil"  ] = true, ["not"  ] = true,
-    ["or"   ] = true, ["rec"  ] = true, ["ret"  ] = true, ["seq"  ] = true,
-    ["true" ] = true, ["while"] = true, ["yield"] = true
+    ["again"] = true, ["and"  ] = true, ["break" ] = true, ["case" ] = true,
+    ["cfn"  ] = true, ["coro" ] = true, ["do"    ] = true, ["else" ] = true,
+    ["false"] = true, ["fn"   ] = true, ["for"   ] = true, ["glob" ] = true,
+    ["goto" ] = true, ["if"   ] = true, ["in"    ] = true, ["let"  ] = true,
+    ["match"] = true, ["mod"  ] = true, ["nil"   ] = true, ["not"  ] = true,
+    ["or"   ] = true, ["rec"  ] = true, ["return"] = true, ["seq"  ] = true,
+    ["true" ] = true, ["while"] = true, ["yield" ] = true,
+
+    ["__FILE__"] = true, ["__LINE__"] = true
 }
 
 local lex_error = function(ls, msg, value)
@@ -218,25 +221,43 @@ local lex = function(ls, token)
             if ls.current ~= "=" then return "=" end
             next_char(ls)
             return "=="
-        -- > or >=
+        -- > or >=, >>, >>= 
         elseif curr == ">" then
             next_char(ls)
-            if ls.current ~= "=" then return ">" end
-            next_char(ls)
-            return ">="
-        -- < , <= or <-
+            -- >>, >>=
+            if ls.curent == ">" then
+                next_char(ls)
+                if ls.current == "=" then
+                    next_char(ls)
+                    return ">>="
+                else
+                    return ">>"
+                end
+            -- >=
+            elseif ls.current == "=" then
+                next_char(ls)
+                return ">="
+            -- >
+            else
+                return ">"
+            end
+        -- < , <=, <<, <<=
         elseif curr == "<" then
             next_char(ls)
-
-            -- <=
-            if ls.current == "=" then
+            -- <<, <<=
+            if ls.curent == "<" then
+                next_char(ls)
+                if ls.current == "=" then
+                    next_char(ls)
+                    return "<<="
+                else
+                    return "<<"
+                end
+            -- >=
+            elseif ls.current == "=" then
                 next_char(ls)
                 return "<="
-            -- <-
-            elseif ls.current == "-" then
-                next_char(ls)
-                return "<-"
-            -- <
+            -- >
             else
                 return "<"
             end
@@ -247,12 +268,22 @@ local lex = function(ls, token)
             next_char(ls)
             return "!="
 
-        -- +, +=
+        -- +, +=, ++
         elseif curr == "+" then
             next_char(ls)
-            if ls.current ~= "=" then return "+" end
-            next_char(ls)
-            return "+="
+
+            -- ++
+            if ls.current == "+" then
+                next_char(ls)
+                return "++"
+            -- +=
+            elseif ls.current == "=" then
+                next_char(ls)
+                return "+="
+            -- +
+            else
+                return "+"
+            end
         -- -, -=, ->
         elseif curr == "-" then
             next_char(ls)
@@ -269,12 +300,48 @@ local lex = function(ls, token)
             else
                 return "-"
             end
-        -- *, *=
+        -- *, *=, **
         elseif curr == "*" then
             next_char(ls)
-            if ls.current ~= "=" then return "*" end
+
+            -- **
+            if ls.current == "*" then
+                next_char(ls)
+                return "**"
+            -- *=
+            elseif ls.current == "=" then
+                next_char(ls)
+                return "*="
+            -- *
+            else
+                return "*"
+            end
+        -- %, %=
+        elseif curr == "%" then
             next_char(ls)
-            return "*="
+            if ls.current ~= "=" then return "%" end
+            next_char(ls)
+            return "%="
+
+        -- &, &=
+        elseif curr == "&" then
+            next_char(ls)
+            if ls.current ~= "=" then return "&" end
+            next_char(ls)
+            return "&="
+        -- |, |=
+        elseif curr == "|" then
+            next_char(ls)
+            if ls.current ~= "=" then return "|" end
+            next_char(ls)
+            return "|="
+        -- ^, ^=
+        elseif curr == "^" then
+            next_char(ls)
+            if ls.current ~= "=" then return "^" end
+            next_char(ls)
+            return "^="
+
         -- /, /=, // (short comments), /* */ (long comments)
         elseif curr == "/" then
             next_char(ls)
@@ -353,11 +420,11 @@ local lex = function(ls, token)
         -- keywords, identifiers, single-char tokens
         else
             -- keyword or identifier
-            if is_ident_keyword(curr) then
+            if is_ident(curr) or is_keyword(curr) then
                 local buf = { curr }
                 next_char(ls)
 
-                while is_ident_keyword(ls.current) do
+                while is_ident(ls.current) or is_keyword(ls.current) do
                     save_and_next_char(ls, buf)
                 end
 
