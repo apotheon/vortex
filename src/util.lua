@@ -371,5 +371,26 @@ return {
     randomseed = randomseed,
     random = rnd,
     unique_sym = unique_sym,
-    hash_sym = hash_sym
+    hash_sym = hash_sym,
+
+    parse_args = function(argv)
+        local ret = {}
+
+        local val = false
+        for i = 1, #argv do
+            local opt = argv[i]
+            if opt == "-o" then
+                val = true
+            elseif val then
+                opt:gsub("(.+)=(.+)", function(a, b)
+                    ret[#ret + 1] = { a, b }
+                end)
+                val = false
+            else
+                ret[#ret + 1] = opt
+            end
+        end
+
+        return ret
+    end
 }

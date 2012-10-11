@@ -25,43 +25,51 @@ local parser = require("parser")
 local help = function(args)
     print("Vortex compiler v" .. META.general.version)
     print("Usage:")
-    print("    " .. args[-1] .. " " .. args[0] .. " [files.vx]")
+    print("    " .. args[-1] .. " " .. args[0] .. " [-o opt=val] [files.vx]")
 end
 
 local compile_all = function(args)
+    args = util.parse_args(args)
+
     for i = 1, #args do
-        local  ifname = args[i]
-        local  rs = io.open(ifname, "r")
-        if not rs then
-            io.stderr:write(ifname .. ": No such file or directory\n")
-            return 1
-        end
-
-        local  ofname
-        local  has_ext = ifname:find("%.vx")
-        if not has_ext then
-            ofname = ifname .. ".lua"
+        local v = args[i]
+        if type(v) == "table" then
+            local key, val = v[1], v[2]
+            key:gsub("(.+)%.(.+)", function(a, b) META[a][b] = val end)
         else
-            ofname = ifname:gsub("%.vx", ".lua")
-        end
+            local  ifname = v
+            local  rs = io.open(ifname, "r")
+            if not rs then
+                io.stderr:write(ifname .. ": No such file or directory\n")
+                return 1
+            end
 
-        local  ws = io.open(ofname, "w")
-        if not ws then
-            io.stderr:write("Cannot open " .. ofname .. " for writing.\n")
+            local  ofname
+            local  has_ext = ifname:find("%.vx")
+            if not has_ext then
+                ofname = ifname .. ".lua"
+            else
+                ofname = ifname:gsub("%.vx", ".lua")
+            end
+
+            local  ws = io.open(ofname, "w")
+            if not ws then
+                io.stderr:write("Cannot open " .. ofname .. " for writing.\n")
+                io.close(rs)
+                return 1
+            end
+
+            --print("Compiling " .. ifname .. " to " .. ofname .. "...")
+
+            local ret = parser.parse(
+                ifname, util.file_istream(rs), util.file_ostream(ws))
+
             io.close(rs)
-            return 1
-        end
+            io.close(ws)
 
-        --print("Compiling " .. ifname .. " to " .. ofname .. "...")
-
-        local ret = parser.parse(
-            ifname, util.file_istream(rs), util.file_ostream(ws))
-
-        io.close(rs)
-        io.close(ws)
-
-        if ret and ret ~= 0 then
-            return ret
+            if ret and ret ~= 0 then
+                return ret
+            end
         end
     end
 end
