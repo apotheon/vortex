@@ -31,7 +31,7 @@ local Binary_Ops = {
     ["/"  ] = { 14, 14 }, ["%"  ] = { 14, 14 },
 
     -- join and cons have the same precedence
-    ["++" ] = { 16, 16 }, ["::" ] = { 16, 16 },
+    ["++" ] = { 15, 15 }, ["::" ] = { 15, 15 },
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
@@ -39,7 +39,7 @@ local Binary_Ops = {
 }
 
 local Unary_Ops = {
-    ["-"  ] = 15, ["not"] = 15, ["#"  ] = 15, ["~"  ] = 15
+    ["-"  ] = 16, ["not"] = 16, ["#"  ] = 16, ["~"  ] = 16
 }
 
 local syntax_error = lexer.syntax_error
