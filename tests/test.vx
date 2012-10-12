@@ -64,3 +64,10 @@ let blk = {
     5
 }
 print("block ret", blk)
+
+let i = 1
+while i > 2 -> print("hello from the loop")
+while i > 150 {
+    print("more hellos")
+    let a = 150
+}

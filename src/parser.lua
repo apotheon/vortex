@@ -3,41 +3,43 @@ local util    = require("util")
 
 -- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
-    -- arithmetic operators
-    ["+"  ] = { 6,   6 },
-    ["-"  ] = { 6,   6 },
-    ["*"  ] = { 7,   7 },
-    ["/"  ] = { 7,   7 },
-    ["%"  ] = { 7,   7 },
-    ["^"  ] = { 12, 11 },
+    -- all the assignment operators have the same, lowest precedence
+    ["="  ] = { 2,  1  }, ["+=" ] = { 2,  1  }, ["-=" ] = { 2,  1  },
+    ["*=" ] = { 2,  1  }, ["/=" ] = { 2,  1  }, ["%=" ] = { 2,  1  },
+    ["^=" ] = { 2,  1  }, ["&=" ] = { 2,  1  }, ["|=" ] = { 2,  1  },
+    ["<<="] = { 2,  1  }, [">>="] = { 2,  1  },
+
+    -- followed by logical operators or, and
+    ["or" ] = { 3,  3  }, ["and"] = { 4,  4  },
+
+    -- eq / neq comparison
+    ["==" ] = { 5,  5  }, ["!=" ] = { 5,  5  },
+
+    -- other comparisons
+    ["<"  ] = { 6,  6  }, ["<=" ] = { 6,  6  }, [">"  ] = { 6,  6 },
+    [">=" ] = { 6,  6  },
 
     -- concat
-    [".." ] = { 5,   4 },
+    [".." ] = { 8,  7  },
 
-    -- comparison
-    ["==" ] = { 3,   3 },
-    ["<"  ] = { 3,   3 },
-    ["<=" ] = { 3,   3 },
-    ["!=" ] = { 3,   3 },
-    [">"  ] = { 3,   3 },
-    [">=" ] = { 3,   3 },
+    -- bitwise ops
+    ["|"  ] = { 9,  9  }, ["^"  ] = { 10, 10 }, ["&"  ] = { 11, 11 },
+    [">>" ] = { 12, 12 }, [">>" ] = { 12, 12 },
 
-    -- compound
-    [":=" ] = { 9,   8 },
-    ["+=" ] = { 9,   8 },
-    ["-=" ] = { 9,   8 },
-    ["*=" ] = { 9,   8 },
-    ["/=" ] = { 9,   8 },
+    -- arithmetic ops
+    ["+"  ] = { 13, 13 }, ["-"  ] = { 13, 13 }, ["*"  ] = { 14, 14 },
+    ["/"  ] = { 14, 14 }, ["%"  ] = { 14, 14 },
 
-    -- and / or
-    ["and"] = { 2,   2 },
-    ["or" ] = { 1,   1 }
+    -- join and cons have the same precedence
+    ["++" ] = { 15, 15 }, ["::" ] = { 15, 15 },
+
+    -- unary ops come now, but are in their own table
+    -- and the last one - pow
+    ["**" ] = { 17, 16 }
 }
 
 local Unary_Ops = {
-    ["-"  ] = 10,
-    ["not"] = 10,
-    ["#"  ] = 10
+    ["-"  ] = 15, ["not"] = 15, ["#"  ] = 15, ["~"  ] = 15
 }
 
 local syntax_error = lexer.syntax_error
@@ -79,10 +81,12 @@ local Scope = util.Object:clone {
 local Function_State = Scope:clone {
 }
 
-local gen_local = function(names, vals, rec)
-    if not vals then
+local gen_local = function(names, vals, ltype)
+    if ltype == "glob" then
+        return concat { names, " = ", vals or "nil" }
+    elseif not vals then
         return concat { "local ", names }
-    elseif rec then
+    elseif ltype == "rec" then
         return concat { "local ", names, "; ", names, " = ", vals }
     else
         return concat { "local ", names, " = ", vals }
@@ -113,6 +117,11 @@ local gen_if = function(cond, tsc, fsc)
     end
     rt[#rt + 1] = "\n" .. (" "):rep((tsc.indent - 1) * META.cgen.indent)
     return concat(rt) .. "end"
+end
+
+local gen_while = function(cond, body)
+    return concat { "while ", cond, " do\n", body:build(), "\n",
+        (" "):rep((body.indent - 1) * META.cgen.indent) } .. "end"
 end
 
 local gen_block = function(sc)
@@ -260,8 +269,8 @@ local Unary_Expr = util.Object:clone {
 local Let_Expr = util.Object:clone {
     name = "Let_Expr",
 
-    __init = function(self, rec, idents, assign)
-        self.rec, self.idents, self.assign = rec, idents, assign
+    __init = function(self, ltype, idents, assign)
+        self.type, self.idents, self.assign = ltype, idents, assign
     end,
 
     generate = function(self, si)
@@ -275,7 +284,7 @@ local Let_Expr = util.Object:clone {
         local idents = gen_seq(self.idents)
         syms = gen_seq(syms)
 
-        si:push(gen_local(idents, syms, self.rec))
+        si:push(gen_local(idents, syms, self.type))
         return idents
     end
 }
@@ -356,9 +365,25 @@ local If_Expr = util.Object:clone {
         end
 
         si:push(gen_local(sym))
-        si:push(gen_if(self.cond:generate(si), tsc, fsc))
+        si:push(gen_if(self.cond:generate(si, true), tsc, fsc))
 
         return sym
+    end
+}
+
+local While_Expr = util.Object:clone {
+    name = "While_Expr",
+
+    __init = function(self, cond, body)
+        self.cond, self.body = cond, body
+    end,
+
+    generate = function(self, si)
+        local bsc = Scope(si.fstate, si.indent + 1)
+        self.body:generate(bsc, self.body:is_a(Block_Expr))
+
+        si:push(gen_while(self.cond:generate(si, true), bsc))
+        return "nil"
     end
 }
 
@@ -598,6 +623,23 @@ local parse_if = function(ls)
     return If_Expr(cond, tval, nil)
 end
 
+local parse_while = function(ls)
+    ls:get()
+    local cond = parse_expr(ls)
+    local tok  = ls.token
+
+    local body
+    if tok.name == "{" then
+        body = parse_block(ls)
+    else
+        assert_tok(ls, "->")
+        ls:get()
+        body = parse_expr(ls)
+    end
+
+    return While_Expr(cond, body)
+end
+
 local parse_return = function(ls)
     ls:get()
     if ls.token.name == "(" then
@@ -620,9 +662,9 @@ parse_expr = function(ls)
     elseif name == "let" then
         ls:get()
 
-        local recur = false
-        if tok.name == "rec" then
-            recur = true
+        local ltype
+        if tok.name == "rec" or tok.name == "glob" then
+            ltype = tok.name
             ls:get()
         end
 
@@ -637,11 +679,13 @@ parse_expr = function(ls)
             exprs = parse_exprlist(ls)
         end
 
-        return Let_Expr(recur, ids, exprs)
+        return Let_Expr(ltype, ids, exprs)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "if" then
         return parse_if(ls)
+    elseif name == "while" then
+        return parse_while(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "{" then
