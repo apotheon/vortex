@@ -2,8 +2,11 @@
 let rec fact = fn n ->
     if n == 0 ->
         1
-    else ->
+    else {
+        /* a test for statement block codegen */
+        print("hai from fact")
         n * fact(n - 1)
+    }
 
 /* tail recursive factorial */
 let rec fact_tail = fn n, acc = 1 {
@@ -55,3 +58,9 @@ let rec block_tail = fn {
 
 print(block1(5))
 print(block2(6, 7))
+
+let blk = {
+    print("hi from a block")
+    5
+}
+print("block ret", blk)

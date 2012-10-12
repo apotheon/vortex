@@ -115,6 +115,11 @@ local gen_if = function(cond, tsc, fsc)
     return concat(rt) .. "end"
 end
 
+local gen_block = function(sc)
+    return concat { "do\n", sc:build(), "\n", (" "):rep(
+        (sc.indent - 1) * META.cgen.indent) } .. "end"
+end
+
 local gen_fun = function(params, body)
     return concat { "function(", params, ")\n", body:build(), "\n",
         (" "):rep((body.indent - 1) * META.cgen.indent), "end" }
@@ -184,16 +189,33 @@ local Block_Expr = util.Object:clone {
         self.exprs = exprs
     end,
 
-    -- XXX: works only for functions right now
-    generate = function(self, si)
+    generate = function(self, si, stat)
         local exprs = self.exprs
-        local sym   = unique_sym("block")
         local len   = #exprs
 
-        for i = 1, len - 1 do
-            exprs[i]:generate(si)
+        if stat then
+            for i = 1, len - 1 do
+                exprs[i]:generate(si)
+            end
+            -- function block, different case
+            if si:is_a(Function_State) then
+                si:push(gen_ret(exprs[len]:generate(si, true)))
+            else
+                return exprs[len]:generate(si, true)
+            end
+        else
+            local sym = unique_sym("block")
+            si:push(gen_local(sym))
+
+            local sc = Scope(si.fstate, si.indent + 1)
+            for i = 1, len - 1 do
+                exprs[i]:generate(sc)
+            end
+            sc:push(gen_ass(sym, exprs[len]:generate()))
+            si:push(gen_block(sc))
+
+            return sym
         end
-        si:push(gen_ret(exprs[len]:generate(si, true)))
     end
 }
 
@@ -305,7 +327,7 @@ local Function_Expr = util.Object:clone {
 
         -- avoid temps
         if self.body:is_a(Block_Expr) then
-            self.body:generate(fs)
+            self.body:generate(fs, true)
         else
             fs:push(gen_ret(self.body:generate(fs, true)))
         end
@@ -324,13 +346,13 @@ local If_Expr = util.Object:clone {
         local sym = not fun and unique_sym("if") or nil
 
         local tsc = Scope(si.fstate, si.indent + 1)
-        tsc:push(gen_ass(sym, self.tval:generate(tsc)))
+        tsc:push(gen_ass(sym, self.tval:generate(tsc, true)))
 
         local fsc
         local fval = self.fval
         if fval then
             fsc = Scope(si.fstate, si.indent + 1)
-            fsc:push(gen_ass(sym, fval:generate(fsc)))
+            fsc:push(gen_ass(sym, fval:generate(fsc, true)))
         end
 
         si:push(gen_local(sym))
@@ -551,18 +573,26 @@ end
 local parse_if = function(ls)
     ls:get()
     local cond = parse_expr(ls)
+    local tok  = ls.token
 
-    assert_tok(ls, "->")
-    ls:get()
-
-    local tval = parse_expr(ls)
-
-    local tok = ls.token
-    if tok.name == "else" then
-        ls:get()
+    local tval
+    if tok.name == "{" then
+        tval = parse_block(ls)
+    else
         assert_tok(ls, "->")
         ls:get()
-        return If_Expr(cond, tval, parse_expr(ls))
+        tval = parse_expr(ls)
+    end
+
+    if tok.name == "else" then
+        ls:get()
+        if tok.name == "{" then
+            return If_Expr(cond, tval, parse_block(ls))
+        else
+            assert_tok(ls, "->")
+            ls:get()
+            return If_Expr(cond, tval, parse_expr(ls))
+        end
     end
 
     return If_Expr(cond, tval, nil)
