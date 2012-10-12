@@ -42,6 +42,12 @@ local Unary_Ops = {
     ["-"  ] = 16, ["not"] = 16, ["#"  ] = 16, ["~"  ] = 16
 }
 
+local Ass_Ops = {
+    ["="  ] = true, ["+=" ] = true, ["-=" ] = true, ["*=" ] = true,
+    ["/=" ] = true, ["%=" ] = true, ["^=" ] = true, ["&=" ] = true,
+    ["|=" ] = true, ["<<="] = true, [">>="] = true
+}
+
 local syntax_error = lexer.syntax_error
 local case_class = util.case_class
 local unique_sym = util.unique_sym
@@ -144,9 +150,20 @@ end
 
 -- classes
 
+local Expr = util.Object:clone {
+    name = "Expr",
+
+    is_lvalue = function(self)
+        return false
+    end,
+
+    generate = function(self)
+    end
+}
+
 local Call_Expr
 
-local Symbol_Expr = util.Object:clone {
+local Symbol_Expr = Expr:clone {
     name = "Symbol_Expr",
 
     __init = function(self, sym)
@@ -155,10 +172,14 @@ local Symbol_Expr = util.Object:clone {
 
     generate = function(self)
         return self.symbol
+    end,
+
+    is_lvalue = function(self)
+        return true
     end
 }
 
-local Value_Expr = util.Object:clone {
+local Value_Expr = Expr:clone {
     name = "Value_Expr",
 
     __init = function(self, val)
@@ -170,7 +191,7 @@ local Value_Expr = util.Object:clone {
     end
 }
 
-local Return_Expr = util.Object:clone {
+local Return_Expr = Expr:clone {
     name = "Return_Expr",
 
     __init = function(self, exprs)
@@ -191,7 +212,7 @@ local Return_Expr = util.Object:clone {
     end
 }
 
-local Block_Expr = util.Object:clone {
+local Block_Expr = Expr:clone {
     name = "Block_Expr",
 
     __init = function(self, exprs)
@@ -228,7 +249,7 @@ local Block_Expr = util.Object:clone {
     end
 }
 
-local Binary_Expr = util.Object:clone {
+local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
 
     __init = function(self, op, lhs, rhs)
@@ -247,10 +268,17 @@ local Binary_Expr = util.Object:clone {
 
         si:push(gen_local(sym, gen_binexpr(self.op, lhs, rhs)))
         return sym
+    end,
+
+    is_lvalue = function(self)
+        if Ass_Ops[self.op] then
+            return true
+        end
+        return false
     end
 }
 
-local Unary_Expr = util.Object:clone {
+local Unary_Expr = Expr:clone {
     name = "Unary_Expr",
 
     __init = function(self, op, lhs)
@@ -266,7 +294,7 @@ local Unary_Expr = util.Object:clone {
     end
 }
 
-local Let_Expr = util.Object:clone {
+local Let_Expr = Expr:clone {
     name = "Let_Expr",
 
     __init = function(self, ltype, idents, assign)
@@ -289,7 +317,7 @@ local Let_Expr = util.Object:clone {
     end
 }
 
-local Function_Expr = util.Object:clone {
+local Function_Expr = Expr:clone {
     name = "Function_Expr",
 
     __init = function(self, params, defaults, body)
@@ -344,7 +372,7 @@ local Function_Expr = util.Object:clone {
     end
 }
 
-local If_Expr = util.Object:clone {
+local If_Expr = Expr:clone {
     name = "If_Expr",
 
     __init = function(self, cond, tval, fval)
@@ -371,7 +399,7 @@ local If_Expr = util.Object:clone {
     end
 }
 
-local While_Expr = util.Object:clone {
+local While_Expr = Expr:clone {
     name = "While_Expr",
 
     __init = function(self, cond, body)
@@ -387,7 +415,7 @@ local While_Expr = util.Object:clone {
     end
 }
 
-local Sequence_Expr = util.Object:clone {
+local Sequence_Expr = Expr:clone {
     name = "Sequence_Expr",
 
     __init = function(self, expr)
@@ -398,7 +426,7 @@ local Sequence_Expr = util.Object:clone {
     end
 }
 
-Call_Expr = util.Object:clone {
+Call_Expr = Expr:clone {
     name = "Call_Expr",
 
     __init = function(self, expr, params)
@@ -489,6 +517,10 @@ parse_binexpr = function(ls, mp)
         if not cur or not t or t[1] < mp then break end
 
         local op, p1, p2 = cur, t[1], t[2]
+
+        if lhs and (Ass_Ops[op] and not lhs:is_lvalue()) then
+            syntax_error(ls, "expected lvalue")
+        end
 
         ls:get()
         local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
