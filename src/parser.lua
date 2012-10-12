@@ -31,11 +31,11 @@ local Binary_Ops = {
     ["/"  ] = { 14, 14 }, ["%"  ] = { 14, 14 },
 
     -- join and cons have the same precedence
-    ["++" ] = { 15, 15 }, ["::" ] = { 15, 15 },
+    ["++" ] = { 16, 16 }, ["::" ] = { 16, 16 },
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
-    ["**" ] = { 17, 16 }
+    ["**" ] = { 18, 17 }
 }
 
 local Unary_Ops = {
