@@ -157,7 +157,7 @@ local Expr = util.Object:clone {
         return false
     end,
 
-    generate = function(self)
+    generate = function(self, sc, kwargs)
     end
 }
 
@@ -170,7 +170,7 @@ local Symbol_Expr = Expr:clone {
         self.symbol = sym
     end,
 
-    generate = function(self)
+    generate = function(self, sc, kwargs)
         return self.symbol
     end,
 
@@ -186,7 +186,7 @@ local Value_Expr = Expr:clone {
         self.value = val
     end,
 
-    generate = function(self)
+    generate = function(self, sc, kwargs)
         return self.value
     end
 }
@@ -198,16 +198,18 @@ local Return_Expr = Expr:clone {
         self.exprs = exprs
     end,
 
-    generate = function(self, si, notmp)
+    generate = function(self, sc, kwargs)
         local exprs = self.exprs
         local len   = #exprs
 
         local exps = {}
         for i = 1, len do
-            exps[#exps + 1] = exprs[i]:generate(si, i == len)
+            exps[#exps + 1] = exprs[i]:generate(sc, {
+                no_local = (i == len)
+            })
         end
-        si:push(gen_ret(gen_seq(exps)))
-        si:lock()
+        sc:push(gen_ret(gen_seq(exps)))
+        sc:lock()
         return "nil"
     end
 }
@@ -219,31 +221,41 @@ local Block_Expr = Expr:clone {
         self.exprs = exprs
     end,
 
-    generate = function(self, si, stat)
+    generate = function(self, sc, kwargs)
         local exprs = self.exprs
         local len   = #exprs
 
-        if stat then
-            for i = 1, len - 1 do
-                exprs[i]:generate(si)
-            end
-            -- function block, different case
-            if si:is_a(Function_State) then
-                si:push(gen_ret(exprs[len]:generate(si, true)))
+        local scope = (kwargs.statement or not kwargs.no_scope) and
+            Scope(sc.fstate, sc.indent + 1) or sc
+
+        for i = 1, len - 1 do
+            scope:push(exprs[i]:generate(scope, {
+                statement = true
+            }))
+        end
+
+        if kwargs.no_scope then
+            if sc:is_a(Function_State) then
+                sc:push(gen_ret(exprs[len]:generate(sc, {
+                    no_local = true
+                })))
             else
-                return exprs[len]:generate(si, true)
+                return exprs[len]:generate(sc, {
+                    no_local = true
+                })
             end
+        elseif kwargs.statement then
+            scope:push(exprs[len]:generate(scope, {
+                statement = true
+            }))
+            sc:push(gen_block(scope))
         else
             local sym = unique_sym("block")
-            si:push(gen_local(sym))
-
-            local sc = Scope(si.fstate, si.indent + 1)
-            for i = 1, len - 1 do
-                exprs[i]:generate(sc)
-            end
-            sc:push(gen_ass(sym, exprs[len]:generate()))
-            si:push(gen_block(sc))
-
+            sc:push(gen_local(sym))
+            scope:push(gen_ass(sym, exprs[len]:generate(scope, {
+                no_local = true
+            })))
+            sc:push(gen_block(scope))
             return sym
         end
     end
@@ -256,17 +268,16 @@ local Binary_Expr = Expr:clone {
         self.op, self.lhs, self.rhs = op, lhs, rhs
     end,
 
-    generate = function(self, si, notemp)
-        local lhs = self.lhs:generate(si)
-        local rhs = self.rhs:generate(si)
+    generate = function(self, sc, kwargs)
+        local lhs = self.lhs:generate(sc, {})
+        local rhs = self.rhs:generate(sc, {})
 
-        if notemp then
+        if kwargs.no_local then
             return gen_binexpr(self.op, lhs, rhs)
         end
 
         local sym = unique_sym(self.op)
-
-        si:push(gen_local(sym, gen_binexpr(self.op, lhs, rhs)))
+        sc:push(gen_local(sym, gen_binexpr(self.op, lhs, rhs)))
         return sym
     end,
 
@@ -285,11 +296,15 @@ local Unary_Expr = Expr:clone {
         self.op, self.rhs = op, rhs
     end,
 
-    generate = function(self, si)
-        local rhs = self.rhs:generate(si)
-        local sym = unique_sym(self.op)
+    generate = function(self, sc, kwargs)
+        local rhs = self.rhs:generate(sc, {})
 
-        si:push(gen_local(sym, gen_unexpr(self.op, rhs)))
+        if kwargs.no_local then
+            return gen_unexpr(self.op, rhs)
+        end
+
+        local sym = unique_sym(self.op)
+        sc:push(gen_local(sym, gen_unexpr(self.op, rhs)))
         return sym
     end
 }
@@ -301,19 +316,27 @@ local Let_Expr = Expr:clone {
         self.type, self.idents, self.assign = ltype, idents, assign
     end,
 
-    generate = function(self, si)
+    generate = function(self, sc, kwargs)
         local syms = {}
         local len = #self.assign
-        for i = 1, len do
+
+        for i = 1, len - 1 do
             local nd = self.assign[i]
-            syms[#syms + 1] = nd:generate(si, i == len and nd:is_a(Call_Expr))
+            syms[#syms + 1] = nd:generate(sc, {})
         end
+
+        syms[#syms + 1] = self.assign[len]:generate(sc, {
+            no_local = true
+        })
 
         local idents = gen_seq(self.idents)
         syms = gen_seq(syms)
 
-        si:push(gen_local(idents, syms, self.type))
-        return idents
+        sc:push(gen_local(idents, syms, self.type))
+
+        if not kwargs.statement then
+            return idents
+        end
     end
 }
 
@@ -324,8 +347,8 @@ local Function_Expr = Expr:clone {
         self.params, self.defaults, self.body = params, defaults, body
     end,
 
-    generate = function(self, si)
-        local fs = Function_State(si.fstate, si.indent + 1)
+    generate = function(self, sc, kwargs)
+        local fs = Function_State(sc.fstate, sc.indent + 1)
 
         local args,  defs  = self.params, self.defaults
         local nargs, ndefs = #args, #defs
@@ -353,7 +376,9 @@ local Function_Expr = Expr:clone {
                 fs:push(gen_local(name))
 
                 local tsc = Scope(fs, fs.indent + 1)
-                tsc:push(gen_ass(name, defs[i]:generate(tsc, true)))
+                tsc:push(gen_ass(name, defs[i]:generate(tsc, {
+                    no_local = true
+                })))
 
                 local fsc = Scope(fs, fs.indent + 1)
                 fsc:push(gen_ass(name, "select(" .. i .. ", ...)"))
@@ -363,10 +388,15 @@ local Function_Expr = Expr:clone {
         end
 
         -- avoid temps
-        if self.body:is_a(Block_Expr) then
-            self.body:generate(fs, true)
+        local body = self.body
+        if body:is_a(Block_Expr) then
+            body:generate(fs, {
+                no_scope = true
+            })
         else
-            fs:push(gen_ret(self.body:generate(fs, true)))
+            fs:push(gen_ret(body:generate(fs, {
+                no_local = true
+            })))
         end
         return gen_fun(gen_seq(np), fs)
     end
@@ -379,23 +409,43 @@ local If_Expr = Expr:clone {
         self.cond, self.tval, self.fval = cond, tval, fval
     end,
 
-    generate = function(self, si)
-        local sym = not fun and unique_sym("if") or nil
+    generate = function(self, sc, kwargs)
+        local stat, tsc, fsc, tval, fval = kwargs.statement
 
-        local tsc = Scope(si.fstate, si.indent + 1)
-        tsc:push(gen_ass(sym, self.tval:generate(tsc, true)))
+        tsc  = Scope(sc.fstate, sc.indent + 1)
+        tval = self.tval:generate(tsc, {
+            no_scope  = true,
+            statement = stat
+        })
 
-        local fsc
-        local fval = self.fval
-        if fval then
-            fsc = Scope(si.fstate, si.indent + 1)
-            fsc:push(gen_ass(sym, fval:generate(fsc, true)))
+        if self.fval then
+            fsc  = Scope(sc.fstate, sc.indent + 1)
+            fval = self.fval:generate(fsc, {
+                no_scope  = true,
+                statement = stat
+            })
         end
 
-        si:push(gen_local(sym))
-        si:push(gen_if(self.cond:generate(si, true), tsc, fsc))
+        if stat then
+            tsc:push(tval)
+            if fsc then fsc:push(fval) end
 
-        return sym
+            sc:push(gen_if(self.cond:generate(sc, {
+                no_local = true
+            }), tsc, fsc))
+        else
+            local sym = unique_sym("if")
+
+            tsc:push(gen_ass(sym, tval))
+            if fsc then fsc:push(gen_ass(sym, fval)) end
+
+            sc:push(gen_local(sym))
+            sc:push(gen_if(self.cond:generate(sc, {
+                no_local = true
+            }), tsc, fsc))
+
+            return sym
+        end
     end
 }
 
@@ -406,12 +456,19 @@ local While_Expr = Expr:clone {
         self.cond, self.body = cond, body
     end,
 
-    generate = function(self, si)
-        local bsc = Scope(si.fstate, si.indent + 1)
-        self.body:generate(bsc, self.body:is_a(Block_Expr))
+    generate = function(self, sc, kwargs)
+        local bsc = Scope(sc.fstate, sc.indent + 1)
 
-        si:push(gen_while(self.cond:generate(si, true), bsc))
-        return "nil"
+        self.body:generate(bsc, {
+            statement = true,
+            no_scope  = true
+        })
+
+        sc:push(gen_while(self.cond:generate(sc, {
+            no_local = true
+        }), bsc))
+
+        if not kwargs.statement then return "nil" end
     end
 }
 
@@ -422,7 +479,7 @@ local Sequence_Expr = Expr:clone {
         self.expr = expr
     end,
 
-    generate = function(self, si)
+    generate = function(self, sc, kwargs)
     end
 }
 
@@ -433,22 +490,32 @@ Call_Expr = Expr:clone {
         self.expr, self.params = expr, params
     end,
 
-    generate = function(self, si, notemp)
+    generate = function(self, sc, kwargs)
         local syms = {}
         local len  = #self.params
+
         for i = 1, len do
-            local param = self.params[i]
-            syms[#syms + 1] = param:generate(si, param:is_a(Call_Expr))
+            local par = self.params[i]
+            syms[#syms + 1] = par:generate(sc, {
+                no_local = par:is_a(Call_Expr)
+            })
         end
+
         syms = gen_seq(syms)
 
-        if notemp then
-            return gen_call(self.expr:generate(si), syms)
-        end
+        local expr = self.expr:generate(sc, {
+            no_local = true
+        })
 
-        local sym = unique_sym("call")
-        si:push(gen_local(sym, gen_call(self.expr:generate(si), syms)))
-        return sym
+        if kwargs.statement then
+            sc:push(gen_call(expr, syms))
+        elseif kwargs.no_local then
+            return gen_call(expr, syms)
+        else
+            local sym = unique_sym("call")
+            sc:push(gen_local(sym, gen_call(expr, syms)))
+            return sym
+        end
     end
 }
 
@@ -746,7 +813,9 @@ return {
         local ms = Scope(nil, 0)
         -- generate the code
         for i = 1, #ast do
-            ast[i]:generate(ms)
+            ast[i]:generate(ms, {
+                statement = true
+            })
         end
         local str = ms:build()
 
