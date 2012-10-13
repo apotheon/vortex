@@ -80,3 +80,5 @@ while i > 150 {
 }
 i += i * 2
 print(i)
+
+print(__FILE__, __LINE__)

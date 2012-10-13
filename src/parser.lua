@@ -834,6 +834,12 @@ parse_expr = function(ls)
         return parse_return(ls)
     elseif name == "{" then
         return parse_block(ls)
+    elseif name == "__FILE__" then
+        ls:get()
+        return Value_Expr('"' .. ls.source .. '"')
+    elseif name == "__LINE__" then
+        ls:get()
+        return Value_Expr(ls.line_number)
     else
         return parse_binexpr(ls)
     end
