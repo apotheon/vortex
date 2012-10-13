@@ -212,7 +212,7 @@ variable) is described in binary operators (assignment is a left associative
 binary operation).
 #### If expression
     expr_branch ::= '->' expr | block
-    if_expr ::= 'if' expr expr_branch [ 'else' expr_branch ]
+    if_expr ::= 'if' expr expr_branch [ 'else' (expr | expr_branch) ]
 An `if` expression is a conditional expression. It evaluates a condition and
 if it can be converted to a boolean `true` value, it evaluates to the "true"
 expression(s). If it can't, it evaluates to either nil (if no `else` branch is
@@ -223,6 +223,10 @@ the `else` branch.
 
 When working with blocks, writing `->` constantly can feel superfluous and
 decrease readability. You can omit it in such cases.
+
+You can also avoid the arrow after `else` even if there is no block. That makes
+it convenient to do "else if". However, when working with expressions in the
+`else` you'll typically want it (as a separator).
 #### Loop expressions
     loop_expr ::= 'while' expr expr_branch | 'do' expr_branch 'while' expr
                 | 'for' ident_list 'in' expr expr_branch
