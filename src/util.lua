@@ -64,39 +64,21 @@ local Object = {
     -- instantiation of clones
     __call = function(self, ...)
         local r = {
-            __index    = self,
-            __proto    = self,
-            __call     = self.__call,
+            __index = self, __proto = self, __call = self.__call,
             __tostring = self.__inst_tostring or self.__tostring,
-            name       = self.name
+            name = self.name
         }
 
         setmetatable(r, r)
-
-        if  self.__init then
-            self.__init(r, ...)
-        end
-
+        if self.__init then self.__init(r, ...) end
         return r
     end,
 
     -- cloning of any clone
     clone = function(self, tbl)
-        if not tbl then
-            tbl = {
-                __index    = self,
-                __proto    = self,
-                __call     = self.__call,
-                __tostring = self.__tostring
-            }
-        else
-            tbl.__index    = self
-            tbl.__proto    = self
-            tbl.__call     = self.__call
-            if not tbl.__tostring then
-                   tbl.__tostring = self.__tostring
-            end
-        end
+        tbl = tbl or {}
+        tbl.__index, tbl.__proto, tbl.__call = self, self, self.__call
+        if not tbl.__tostring then tbl.__tostring = self.__tostring end
 
         setmetatable(tbl, tbl)
         return tbl
@@ -107,11 +89,9 @@ local Object = {
     is_a = function(self, base)
         if self == base then return true end
 
-        local pt = self.__proto
-        local is = pt == base
+        local pt, is = self.__proto, pt == base
         while not is and pt do
-            pt = pt.__proto
-            is = pt == base
+            pt, is = pt.__proto, pt == base
         end
         return is
     end,
