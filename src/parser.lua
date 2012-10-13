@@ -757,8 +757,9 @@ local parse_if = function(ls)
         if tok.name == "{" then
             return If_Expr(cond, tval, parse_block(ls))
         else
-            assert_tok(ls, "->")
-            ls:get()
+            if tok.name == "->" then
+                ls:get()
+            end
             return If_Expr(cond, tval, parse_expr(ls))
         end
     end
