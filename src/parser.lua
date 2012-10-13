@@ -282,7 +282,6 @@ Binary_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         local lhs = self.lhs:generate(sc, {})
-        local rhs = self.rhs:generate(sc, {})
 
         local op = self.op
         if Ass_Ops[op] then
@@ -290,10 +289,12 @@ Binary_Expr = Expr:clone {
                 sc:push(gen_ass(lhs, rhs))
             else
                 sc:push(gen_ass(lhs, Binary_Expr(op:sub(1, #op - 1),
-                    self.lhs, self.rhs):generate(sc, kwargs)))
+                    self.lhs, self.rhs):generate(sc, { no_local = true })))
             end
             return lhs
         end
+
+        local rhs = self.rhs:generate(sc, {})
 
         if kwargs.no_local then
             return gen_binexpr(self.op, lhs, rhs)
