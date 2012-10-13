@@ -11,9 +11,9 @@ let rec fact = fn n ->
 /* tail recursive factorial */
 let rec fact_tail = fn n, acc = 1 {
     if n == 0 ->
-        return acc
+        acc
     else ->
-        return fact_tail(n - 1, n * acc)
+        fact_tail(n - 1, n * acc)
 }
 
 let fun = fn a, b, c -> a + b * c

@@ -157,6 +157,10 @@ local Expr = util.Object:clone {
         return false
     end,
 
+    is_scoped = function(self)
+        return false
+    end,
+
     generate = function(self, sc, kwargs)
     end
 }
@@ -210,7 +214,6 @@ local Return_Expr = Expr:clone {
         end
         sc:push(gen_ret(gen_seq(exps)))
         sc:lock()
-        return "nil"
     end
 }
 
@@ -234,8 +237,12 @@ local Block_Expr = Expr:clone {
             }))
         end
 
-        if kwargs.no_scope then
-            if sc:is_a(Function_State) then
+        if kwargs.return_val and exprs[len]:is_scoped() then
+            sc:push(exprs[len]:generate(sc, {
+                return_val = true
+            }))
+        elseif kwargs.no_scope then
+            if sc:is_a(Function_State) or kwargs.return_val then
                 sc:push(gen_ret(exprs[len]:generate(sc, {
                     no_local = true
                 })))
@@ -258,6 +265,10 @@ local Block_Expr = Expr:clone {
             sc:push(gen_block(scope))
             return sym
         end
+    end,
+
+    is_scoped = function(self)
+        return true
     end
 }
 
@@ -391,14 +402,20 @@ local Function_Expr = Expr:clone {
         local body = self.body
         if body:is_a(Block_Expr) then
             body:generate(fs, {
-                no_scope = true
+                no_scope = true,
+                return_val = true
             })
         else
             fs:push(gen_ret(body:generate(fs, {
-                no_local = true
+                no_local = true,
+                return_val = true
             })))
         end
         return gen_fun(gen_seq(np), fs)
+    end,
+
+    is_scoped = function(self)
+        return true
     end
 }
 
@@ -410,25 +427,33 @@ local If_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local stat, tsc, fsc, tval, fval = kwargs.statement
+        local stat, rval, tsc, fsc, tval, fval, tscoped, fscoped
+            = kwargs.statement, kwargs.return_val
 
+        tscoped = self.tval:is_scoped()
         tsc  = Scope(sc.fstate, sc.indent + 1)
         tval = self.tval:generate(tsc, {
             no_scope  = true,
-            statement = stat
+            no_local  = true,
+            statement = stat,
+            return_val = rval
         })
 
         if self.fval then
+            fscoped = self.fval:is_scoped()
             fsc  = Scope(sc.fstate, sc.indent + 1)
             fval = self.fval:generate(fsc, {
                 no_scope  = true,
-                statement = stat
+                no_local  = true,
+                statement = stat,
+                return_val = rval
             })
         end
 
-        if stat then
-            tsc:push(tval)
-            if fsc then fsc:push(fval) end
+        if stat or rval then
+            tsc:push((rval and not tscoped) and gen_ret(tval) or tval)
+            if fsc then fsc:push((rval and not fscoped)
+                and gen_ret(fval) or fval) end
 
             sc:push(gen_if(self.cond:generate(sc, {
                 no_local = true
@@ -446,6 +471,10 @@ local If_Expr = Expr:clone {
 
             return sym
         end
+    end,
+
+    is_scoped = function(self)
+        return true
     end
 }
 
@@ -467,8 +496,10 @@ local While_Expr = Expr:clone {
         sc:push(gen_while(self.cond:generate(sc, {
             no_local = true
         }), bsc))
+    end,
 
-        if not kwargs.statement then return "nil" end
+    is_scoped = function(self)
+        return true
     end
 }
 
