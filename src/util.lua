@@ -372,5 +372,13 @@ return {
         end
 
         return ret
+    end,
+
+    map = function(tbl, fun)
+        local r = {}
+        for i = 1, #tbl do
+            r[i] = fun(tbl[i])
+        end
+        return r
     end
 }

@@ -79,6 +79,7 @@ an underscore or a question mark. Digits can't start an identifier.
               | 'nil'
               | 'not'
               | 'or'
+              | 'quote'
               | 'rec'
               | 'return'
               | 'seq'

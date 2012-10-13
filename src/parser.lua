@@ -52,6 +52,7 @@ local syntax_error = lexer.syntax_error
 local case_class = util.case_class
 local unique_sym = util.unique_sym
 local hash_sym = util.hash_sym
+local map = util.map
 
 local assert_tok = function(ls, tok, allow)
     local n = ls.token.name
@@ -148,6 +149,10 @@ local gen_call = function(expr, params)
     return concat { expr, "(", params, ")" }
 end
 
+local gen_indent = function(lvl)
+    return (" "):rep(lvl * META.cgen.indent)
+end
+
 -- classes
 
 local Expr = util.Object:clone {
@@ -162,6 +167,10 @@ local Expr = util.Object:clone {
     end,
 
     generate = function(self, sc, kwargs)
+    end,
+
+    to_lua = function(self, i)
+        return "Expr()"
     end
 }
 
@@ -180,6 +189,10 @@ local Symbol_Expr = Expr:clone {
 
     is_lvalue = function(self)
         return true
+    end,
+
+    to_lua = function(self, i)
+        return ("Symbol_Expr(%q)"):format(self.symbol)
     end
 }
 
@@ -192,6 +205,10 @@ local Value_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         return self.value
+    end,
+
+    to_lua = function(self, i)
+        return ("Value_Expr(%s)"):format(self.value)
     end
 }
 
@@ -214,6 +231,20 @@ local Return_Expr = Expr:clone {
         end
         sc:push(gen_ret(gen_seq(exps)))
         sc:lock()
+    end,
+
+    to_lua = function(self, i)
+        local exprs
+        if #self.exprs == 0 then
+            exprs = "{}"
+        else
+            local exprt = map(self.exprs, function(expr)
+                return expr:to_lua(i + 1) end)
+            exprs = "{\n" .. gen_indent(i + 1)
+                .. concat(exprt, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Return_Expr(%s)"):format(exprs)
     end
 }
 
@@ -269,6 +300,20 @@ local Block_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    to_lua = function(self, i)
+        local exprs
+        if #self.exprs == 0 then
+            exprs = "{}"
+        else
+            local exprt = map(self.exprs, function(expr)
+                return expr:to_lua(i + 1) end)
+            exprs = "{\n" .. gen_indent(i + 1)
+                .. concat(exprt, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Block_Expr(%s)"):format(exprs)
     end
 }
 
@@ -310,6 +355,11 @@ Binary_Expr = Expr:clone {
             return true
         end
         return false
+    end,
+
+    to_lua = function(self, i)
+        return ("Binary_Expr(%q, %s, %s)"):format(self.op,
+            self.lhs:to_lua(i + 1), self.rhs:to_lua(i + 1))
     end
 }
 
@@ -330,6 +380,11 @@ local Unary_Expr = Expr:clone {
         local sym = unique_sym(self.op)
         sc:push(gen_local(sym, gen_unexpr(self.op, rhs)))
         return sym
+    end,
+
+    to_lua = function(self, i)
+        return ("Unary_Expr(%q, %s)"):format(self.op,
+            self.rhs:to_lua(i + 1))
     end
 }
 
@@ -361,6 +416,25 @@ local Let_Expr = Expr:clone {
         if not kwargs.statement then
             return idents
         end
+    end,
+
+    to_lua = function(self, i)
+        local idents = #self.idents == 0 and "{}"
+            or "{ " .. concat(map(self.idents,
+                function(n) return '"' .. n .. '"' end), ", ") .. " }"
+
+        local assign
+        if #self.assign == 0 then
+            assign = "{}"
+        else
+            local exprs = map(self.assign, function(expr)
+                return expr:to_lua(i + 1) end)
+            assign = "{\n" .. gen_indent(i + 1)
+                .. concat(exprs, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Let_Expr(%q, %s, %s)"):format(self.type or "nil",
+            idents, assign)
     end
 }
 
@@ -429,6 +503,25 @@ local Function_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    to_lua = function(self, i)
+        local params = #self.params == 0 and "{}"
+            or "{ " .. concat(map(self.params,
+                function(n) return '"' .. n .. '"' end), ", ") .. " }"
+
+        local defaults
+        if #self.defaults == 0 then
+            defaults = "{}"
+        else
+            local exprs = map(self.defaults, function(expr)
+                return expr:to_lua(i + 1) end)
+            defaults = "{\n" .. gen_indent(i + 1)
+                .. concat(exprs, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Function_Expr(%s, %s, %s)"):format(params, defaults,
+            self.body:to_lua(i + 1))
     end
 }
 
@@ -488,6 +581,12 @@ local If_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    to_lua = function(self, i)
+        return ("If_Expr(%s, %s, %s)"):format(
+            self.cond:to_lua(i + 1), self.tval:to_lua(i + 1),
+            self.fval:to_lua(i + 1))
     end
 }
 
@@ -513,17 +612,42 @@ local While_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    to_lua = function(self, i)
+        return ("While_Expr(%s, %s)"):format(
+            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
     end
 }
 
-local Sequence_Expr = Expr:clone {
-    name = "Sequence_Expr",
+local Seq_Expr = Expr:clone {
+    name = "Seq_Expr",
 
     __init = function(self, expr)
         self.expr = expr
     end,
 
     generate = function(self, sc, kwargs)
+    end,
+
+    to_lua = function(self, i)
+        return ("Seq_Expr(%s)"):format(self.expr:to_lua(i + 1))
+    end
+}
+
+local Quote_Expr = Expr:clone {
+    name = "Quote_Expr",
+
+    __init = function(self, expr)
+        self.expr = expr
+    end,
+
+    generate = function(self, sc, kwargs)
+        return self.expr:to_lua(sc.indent)
+    end,
+
+    to_lua = function(self, i)
+        return ("Quote_Expr(%s)"):format(self.expr:to_lua(i + 1))
     end
 }
 
@@ -560,6 +684,20 @@ Call_Expr = Expr:clone {
             sc:push(gen_local(sym, gen_call(expr, syms)))
             return sym
         end
+    end,
+
+    to_lua = function(self, i)
+        local params
+        if #self.params == 0 then
+            params = "{}"
+        else
+            local exprs = map(self.params, function(expr)
+                return expr:to_lua(i + 1) end)
+            params = "{\n" .. gen_indent(i + 1)
+                .. concat(exprs, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Call_Expr(%s, %s)"):format(self.expr:to_lua(i + 1), params)
     end
 }
 
@@ -732,10 +870,28 @@ end
 
 local parse_sequence = function(ls)
     ls:get()
+
+    if ls.token.name == "{" then
+        return Seq_Expr(parse_block(ls))
+    end
+
     assert_tok(ls, "->")
     ls:get()
 
-    return Sequence_Expr(parse_expr(ls))
+    return Seq_Expr(parse_expr(ls))
+end
+
+local parse_quote = function(ls)
+    ls:get()
+
+    if ls.token.name == "{" then
+        return Quote_Expr(parse_block(ls))
+    end
+
+    assert_tok(ls, "->")
+    ls:get()
+
+    return Quote_Expr(parse_expr(ls))
 end
 
 local parse_if = function(ls)
@@ -826,6 +982,8 @@ parse_expr = function(ls)
         return Let_Expr(ltype, ids, exprs)
     elseif name == "seq" then
         return parse_sequence(ls)
+    elseif name == "quote" then
+        return parse_quote(ls)
     elseif name == "if" then
         return parse_if(ls)
     elseif name == "while" then
