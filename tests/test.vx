@@ -43,6 +43,15 @@ defargs(66, 67, 170, "world")
 defargs(66, 67, 171, "world", 81)
 defargs(66, 67, nil, "hai", nil)
 
+let defvarargs = fn a, b = 5, c = b * (b + 1), ... {
+    print("regular", a, b, c)
+    print("varargs", ...)
+}
+
+defvarargs(150)
+defvarargs(150, 10)
+defvarargs(150, 10, "something", "something else", 3.14)
+
 let block1 = fn a -> {
     print("foo")
     let x = a * a

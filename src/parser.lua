@@ -212,6 +212,19 @@ local Value_Expr = Expr:clone {
     end
 }
 
+local Vararg_Expr = Expr:clone {
+    name = "Vararg_Expr",
+
+    generate = function(self, sc, kwargs)
+        local fs = sc:is_a(Function_State) and sc or sc.fstate
+        return "select(" .. (fs.ndefargs + 1) .. ", ...)"
+    end,
+
+    to_lua = function(self, i)
+        return "Vararg_Expr()"
+    end
+}
+
 local Return_Expr = Expr:clone {
     name = "Return_Expr",
 
@@ -449,6 +462,9 @@ local Function_Expr = Expr:clone {
 
         local args,  defs  = self.params, self.defaults
         local nargs, ndefs = #args, #defs
+
+        fs.nargs = nargs
+        fs.ndefargs = ndefs
 
         if args[#args] == "..." then
             nargs = nargs - 1
@@ -997,6 +1013,9 @@ parse_expr = function(ls)
     elseif name == "__LINE__" then
         ls:get()
         return Value_Expr(ls.line_number)
+    elseif name == "..." then
+        ls:get()
+        return Vararg_Expr()
     else
         return parse_binexpr(ls)
     end
