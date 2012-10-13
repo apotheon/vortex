@@ -31,7 +31,7 @@ local keywords = {
 }
 
 local lex_error = function(ls, msg, value)
-    msg = ("%s:%d: %s"):format(ls.source, ls.line_number, msg)
+    msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, ls.line_pos, msg)
     if value then
         msg = msg .. " near '" .. value .. "'"
     end
@@ -42,7 +42,10 @@ local syntax_error = function(ls, msg)
     lex_error(ls, msg, ls.token.value or ls.token.name)
 end
 
-local next_char = function(ls) ls.current = ls.reader() end
+local next_char = function(ls)
+    ls.current  = ls.reader()
+    ls.line_pos = ls.line_pos + 1
+end
 local next_line = function(ls)
     local prev = ls.current
     assert(is_newline(ls.current))
@@ -55,9 +58,7 @@ local next_line = function(ls)
     end
 
     ls.line_number = ls.line_number + 1
-    if ls.line_number == 1/0 then
-        syntax_error(ls, "chunk has too many lines")
-    end
+    ls.line_pos    = 0
 end
 
 local save_and_next_char = function(ls, buf)
@@ -489,7 +490,8 @@ return {
             source      = fname,    -- the source (a filename or stdin or w/e)
             current     = reader(), -- the current character (from reader)
             line_number = 1,        -- the current line number
-            last_line   = 1         -- previous line number
+            last_line   = 1,        -- previous line number
+            line_pos    = 0         -- position on the line
         }, State_MT)
     end,
 

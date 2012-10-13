@@ -225,7 +225,7 @@ When working with blocks, writing `->` constantly can feel superfluous and
 decrease readability. You can omit it in such cases.
 
 You can also avoid the arrow after `else` even if there is no block. That makes
-it convenient to do "else if". However, when working with expressions in the
+it convenient to do `else if`. However, when working with expressions in the
 `else` you'll typically want it (as a separator).
 #### Loop expressions
     loop_expr ::= 'while' expr expr_branch | 'do' expr_branch 'while' expr
