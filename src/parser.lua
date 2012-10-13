@@ -433,8 +433,7 @@ local Let_Expr = Expr:clone {
                 .. concat(exprs, ",\n" .. gen_indent(i + 1))
                 .. "\n" .. gen_indent(i) .. "}"
         end
-        return ("Let_Expr(%q, %s, %s)"):format(self.type or "nil",
-            idents, assign)
+        return ("Let_Expr(%q, %s, %s)"):format(self.type, idents, assign)
     end
 }
 
@@ -979,7 +978,7 @@ parse_expr = function(ls)
             exprs = parse_exprlist(ls)
         end
 
-        return Let_Expr(ltype, ids, exprs)
+        return Let_Expr(ltype or "default", ids, exprs)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "quote" then
