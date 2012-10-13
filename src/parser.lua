@@ -272,7 +272,8 @@ local Block_Expr = Expr:clone {
     end
 }
 
-local Binary_Expr = Expr:clone {
+local Binary_Expr
+Binary_Expr = Expr:clone {
     name = "Binary_Expr",
 
     __init = function(self, op, lhs, rhs)
@@ -282,6 +283,17 @@ local Binary_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local lhs = self.lhs:generate(sc, {})
         local rhs = self.rhs:generate(sc, {})
+
+        local op = self.op
+        if Ass_Ops[op] then
+            if op == "=" then
+                sc:push(gen_ass(lhs, rhs))
+            else
+                sc:push(gen_ass(lhs, Binary_Expr(op:sub(1, #op - 1),
+                    self.lhs, self.rhs):generate(sc, kwargs)))
+            end
+            return lhs
+        end
 
         if kwargs.no_local then
             return gen_binexpr(self.op, lhs, rhs)
