@@ -149,6 +149,10 @@ local gen_call = function(expr, params)
     return concat { expr, "(", params, ")" }
 end
 
+local gen_index = function(sym, idx)
+    return concat { sym, "[", idx, "]" }
+end
+
 local gen_table = function(sc, arr, ass)
     local ind = (" "):rep((sc.indent + 1) * META.cgen.indent)
     local tbl = { "{\n" }
@@ -235,6 +239,40 @@ local Symbol_Expr = Expr:clone {
 
     to_lua = function(self, i)
         return ("Symbol_Expr(%q)"):format(self.symbol)
+    end
+}
+
+local Index_Expr = Expr:clone {
+    name = "Index_Expr",
+
+    __init = function(self, sym, expr)
+        self.symbol, self.expr = sym, expr
+    end,
+
+    generate = function(self, sc, kwargs)
+        local ex
+        if self.expr:is_a(Value_Expr) then
+            ex = self.expr:generate(sc, {})
+        else
+            local sym = unique_sym("index")
+            sc:push(gen_local(sym, self.expr:generate(sc, {})))
+            ex = sym
+        end
+        if kwargs.no_local then
+            return gen_index(self.symbol, ex)
+        end
+        local sym = unique_sym("index")
+        sc:push(gen_local(sym, gen_index(self.symbol, ex)))
+        return sym
+    end,
+
+    is_lvalue = function(self)
+        return true
+    end,
+
+    to_lua = function(self, i)
+        return ("Index_Expr(%q, %s)"):format(self.symbol,
+            self.expr:to_lua(i + 1))
     end
 }
 
@@ -384,18 +422,30 @@ local Table_Expr = Expr:clone {
 
         local syms = {}
         for i = 1, #array do
-            local sym = unique_sym("arr")
-            sc:push(gen_local(sym, array[i]:generate(sc, {})))
-            syms[#syms + 1] = sym
+            local e = array[i]
+            if e:is_a(Value_Expr) then
+                syms[#syms + 1] = e:generate(sc, {})
+            else
+                local sym = unique_sym("arr")
+                sc:push(gen_local(sym, array[i]:generate(sc, {})))
+                syms[#syms + 1] = sym
+            end
         end
 
         local kvs = {}
         for i = 1, #assarr do
             local pair = assarr[i]
-            local sym = unique_sym("map")
-            sc:push(gen_local(sym, pair[2]:generate(sc, {})))
-            kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc,
-                { no_local = true }), sym)
+            local e = pair[2]
+            if e:is_a(Value_Expr) then
+                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {
+                    no_local = true
+                }), pair[2]:generate(sc, {}))
+            else
+                local sym = unique_sym("map")
+                sc:push(gen_local(sym, pair[2]:generate(sc, {})))
+                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc,
+                    { no_local = true }), sym)
+            end
         end
 
         if kwargs.no_local then
@@ -782,7 +832,7 @@ Call_Expr = Expr:clone {
         for i = 1, len do
             local par = self.params[i]
             syms[#syms + 1] = par:generate(sc, {
-                no_local = par:is_a(Call_Expr)
+                no_local = par:is_a(Call_Expr) or par:is_a(Value_Expr)
             })
         end
 
@@ -827,6 +877,14 @@ local parse_prefixexpr = function(ls)
     if tok == "<ident>" then
         local v = ls.token.value
         ls:get()
+        -- XXX: temporary
+        if ls.token.name == "[" then
+            ls:get()
+            local e = parse_expr(ls)
+            assert_tok(ls, "]")
+            ls:get()
+            return Index_Expr(v, e)
+        end
         return Symbol_Expr(v)
     else
         syntax_error(ls, "unexpected symbol")
