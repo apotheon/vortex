@@ -17,7 +17,7 @@ META = {
     }
 }
 
-package.path = package.path .. ";./src/?.lua;./rt/?.lua"
+package.path = package.path .. ";./src/?.lua"
 
 local util   = require("util")
 local parser = require("parser")

@@ -9,6 +9,7 @@
 
 local M = require("rt.core")
 
+local select = select
 M.__vx_tbl_append = function(tbl, ...)
     for i =1, select("#", ...) do
         tbl[#tbl + 1] = select(i, ...)
