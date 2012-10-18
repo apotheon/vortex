@@ -491,19 +491,24 @@ Binary_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local lhs = self.lhs:generate(sc, {})
-
         local op = self.op
         if Ass_Ops[op] then
+            local lhs, sym = self.lhs, unique_sym("lval")
+            local iv, av = lhs:generate(sc, { no_local = true })
+            if not av then av = iv end
             if op == "=" then
-                sc:push(gen_ass(lhs, rhs))
+                sc:push(gen_local(sym, self.rhs:generate(sc,
+                    { no_local = true })))
+                sc:push(gen_ass(av, sym))
             else
-                sc:push(gen_ass(lhs, Binary_Expr(op:sub(1, #op - 1),
-                    self.lhs, self.rhs):generate(sc, { no_local = true })))
+                sc:push(gen_local(sym, Binary_Expr(op:sub(1, #op - 1),
+                    lhs, self.rhs):generate(sc, {no_local = true })))
+                sc:push(gen_ass(av, sym))
             end
-            return lhs
+            return sym, av
         end
 
+        local lhs = self.lhs:generate(sc, {})
         local rhs = self.rhs:generate(sc, {})
 
         if kwargs.no_local then
