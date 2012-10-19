@@ -76,10 +76,4 @@ else
     M.__vx_bswap = _G.bit.bswap
 end
 
--- table lib
-require "rt.table"
-
--- sequence lib
-require "rt.seq"
-
 return M
