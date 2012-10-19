@@ -258,12 +258,7 @@ local Index_Expr = Expr:clone {
             sc:push(gen_local(sym, self.expr:generate(sc, {})))
             ex = sym
         end
-        if kwargs.no_local then
-            return gen_index(self.symbol, ex)
-        end
-        local sym = unique_sym("index")
-        sc:push(gen_local(sym, gen_index(self.symbol, ex)))
-        return sym
+        return gen_index(self.symbol, ex)
     end,
 
     is_lvalue = function(self)
@@ -493,18 +488,17 @@ Binary_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local op = self.op
         if Ass_Ops[op] then
-            local lhs, sym = self.lhs, unique_sym("lval")
+            local lhs, sym = self.lhs, unique_sym("rhs")
             local iv, av = lhs:generate(sc, { no_local = true })
             if not av then av = iv end
             if op == "=" then
                 sc:push(gen_local(sym, self.rhs:generate(sc,
                     { no_local = true })))
-                sc:push(gen_ass(av, sym))
             else
-                sc:push(gen_local(sym, Binary_Expr(op:sub(1, #op - 1),
-                    lhs, self.rhs):generate(sc, {no_local = true })))
-                sc:push(gen_ass(av, sym))
+                sc:push(gen_local(sym, gen_binexpr(op:sub(1, #op - 1), av,
+                    self.rhs:generate(sc, { no_local = true }))))
             end
+            sc:push(gen_ass(av, sym))
             return sym, av
         end
 

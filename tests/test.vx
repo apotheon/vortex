@@ -97,5 +97,13 @@ let tbl = [
     foo = "haaaaaaaa", 40, 45, 50, some_assoc = "fun fun fun fun"
 ]
 print(table["concat"](tbl, ", "))
+print(tbl[2], tbl["sneaky_one"])
+
+let foo = fn {
+    print("foo")
+    2
+}
+tbl[foo()] += 15
+print(tbl[2])
 
 print(i += 10, i += 324, i, i * 3)
