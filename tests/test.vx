@@ -99,5 +99,3 @@ let tbl = [
 print(table["concat"](tbl, ", "))
 
 print(i += 10, i += 324, i, i * 3)
-//i += 2 += 4 += 6
-//print(i)
