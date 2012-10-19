@@ -4,6 +4,9 @@
  Provides environment facilities for Lua 5.2 and LuaJIT. Appends to the
  default runtime namespace.
 
+ The Lua 5.2 set/getfenv taken from lua-compat-env by David Manura (and
+ modified as required).
+
  Available under the terms of the MIT license.
 ]]
 
