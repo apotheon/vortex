@@ -53,8 +53,8 @@ comment text is ignored by the Vortex lexer, but it assumes long comment
 nesting.
 #### Identifiers
     ident ::= ('_' | alpha) { '_' | alpha | digit }
-Only ASCII characters are allowed in identifiers that are either alphanumeric,
-an underscore or a question mark. Digits can't start an identifier.
+Only ASCII characters are allowed in identifiers that are alphanumeric
+plus underscore. Digits can't start an identifier.
 #### Keywords
     keyword ::= '__FILE__'
               | '__LINE__'
