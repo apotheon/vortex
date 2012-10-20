@@ -36,7 +36,7 @@ delimiter where feasible.
 #### Encoding
     alpha     ::= 'A-Za-z'
     digit     ::= '0-9'
-    hex_digit ::= '0-9A-F'
+    hex_digit ::= '0-9a-fA-F'
 The source text is read byte-by-byte. The language is specified with ASCII;
 things like string literals are encoding dependent. It's recommended to use
 UTF-8.
@@ -52,7 +52,7 @@ lines. Short comments comment everything until the end of the line. The
 comment text is ignored by the Vortex lexer, but it assumes long comment
 nesting.
 #### Identifiers
-    ident ::= ('_' | '?' | alpha) { '_' | '?' | alpha | digit }
+    ident ::= ('_' | alpha) { '_' | alpha | digit }
 Only ASCII characters are allowed in identifiers that are either alphanumeric,
 an underscore or a question mark. Digits can't start an identifier.
 #### Keywords
