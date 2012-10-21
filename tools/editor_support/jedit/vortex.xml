@@ -1,0 +1,165 @@
+<?xml version="1.0"?>
+<!DOCTYPE MODE SYSTEM "xmode.dtd">
+<!-- Vortex edit mode by Daniel "q66" Kolesa <quaker66@gmail.com>
+  Note that Vortex is not yet stable and may change. These definitions
+  will reflect the language changes.
+-->
+
+<MODE>
+    <PROPS>
+        <PROPERTY NAME="commentStart" VALUE="/*"/>
+        <PROPERTY NAME="commentEnd" VALUE="*/"/>
+        <PROPERTY NAME="lineComment" VALUE="//"/>
+        <PROPERTY NAME="wordBreakChars" VALUE=",+-=&lt;&gt;/?^&amp;*"/>
+
+        <!-- Auto indent -->
+        <PROPERTY NAME="indentOpenBrackets" VALUE="{"/>
+        <PROPERTY NAME="indentCloseBrackets" VALUE="}"/>
+        <PROPERTY NAME="unalignedOpenBrackets" VALUE="("/>
+        <PROPERTY NAME="unalignedCloseBrackets" VALUE=")"/>
+        <PROPERTY NAME="indentNextLine" VALUE=".*->[^{]*"/>
+    </PROPS>
+
+    <RULES IGNORE_CASE="FALSE" HIGHLIGHT_DIGITS="TRUE" NO_WORD_SEP="_:."
+        DIGIT_RE="(0x)*[0-9A-Fa-f]?(\.[0-9A-Fa-f]+)?([eEpP][+-]?[0-9A-Fa-f]*)?"
+    >
+        <!-- comments -->
+        <SEQ TYPE="COMMENT1">/**/</SEQ>
+        <SPAN TYPE="COMMENT3" DELEGATE="doxygen::DOXYGEN">
+            <BEGIN>/**</BEGIN>
+            <END>*/</END>
+        </SPAN>
+        <SPAN TYPE="COMMENT3" DELEGATE="doxygen::DOXYGEN">
+            <BEGIN>/*!</BEGIN>
+            <END>*/</END>
+        </SPAN>
+        <SPAN TYPE="COMMENT1" DELEGATE="NESTED_COMMENT">
+            <BEGIN>/*</BEGIN>
+            <END>*/</END>
+        </SPAN>
+        <EOL_SPAN TYPE="COMMENT1">//</EOL_SPAN>
+
+        <!-- string literals -->
+        <SPAN TYPE="LITERAL1" ESCAPE="\" NO_LINE_BREAK="TRUE">
+            <BEGIN>"</BEGIN>
+            <END>"</END>
+        </SPAN>
+        <SPAN TYPE="LITERAL1" ESCAPE="\" NO_LINE_BREAK="TRUE">
+            <BEGIN>'</BEGIN>
+            <END>'</END>
+        </SPAN>
+        <SPAN TYPE="LITERAL1" DELEGATE="NESTED_LITERAL">
+            <BEGIN>[[</BEGIN>
+            <END>]]</END>
+        </SPAN>
+
+        <!-- sequences -->
+        <SEQ TYPE="KEYWORD2">-></SEQ>
+
+        <!-- operators -->
+        <SEQ TYPE="OPERATOR">+</SEQ>
+        <SEQ TYPE="OPERATOR">-</SEQ>
+        <SEQ TYPE="OPERATOR">*</SEQ>
+        <SEQ TYPE="OPERATOR">/</SEQ>
+        <SEQ TYPE="OPERATOR">%</SEQ>
+        <SEQ TYPE="OPERATOR">**</SEQ>
+        <SEQ TYPE="OPERATOR">=</SEQ>
+        <SEQ TYPE="OPERATOR">..</SEQ>
+        <SEQ TYPE="OPERATOR">==</SEQ>
+        <SEQ TYPE="OPERATOR">&lt;</SEQ>
+        <SEQ TYPE="OPERATOR">&lt;=</SEQ>
+        <SEQ TYPE="OPERATOR">!=</SEQ>
+        <SEQ TYPE="OPERATOR">&gt;</SEQ>
+        <SEQ TYPE="OPERATOR">&gt;=</SEQ>
+        <SEQ TYPE="OPERATOR">+=</SEQ>
+        <SEQ TYPE="OPERATOR">-=</SEQ>
+        <SEQ TYPE="OPERATOR">*=</SEQ>
+        <SEQ TYPE="OPERATOR">/=</SEQ>
+        <SEQ TYPE="OPERATOR">%=</SEQ>
+        <SEQ TYPE="OPERATOR">^=</SEQ>
+        <SEQ TYPE="OPERATOR">++</SEQ>
+        <SEQ TYPE="OPERATOR">::</SEQ>
+        <SEQ TYPE="OPERATOR">&amp;</SEQ>
+        <SEQ TYPE="OPERATOR">|</SEQ>
+        <SEQ TYPE="OPERATOR">^</SEQ>
+        <SEQ TYPE="OPERATOR">&lt;&lt;</SEQ>
+        <SEQ TYPE="OPERATOR">&gt;&gt;</SEQ>
+        <SEQ TYPE="OPERATOR">&amp;=</SEQ>
+        <SEQ TYPE="OPERATOR">|=</SEQ>
+        <SEQ TYPE="OPERATOR">^=</SEQ>
+        <SEQ TYPE="OPERATOR">&lt;&lt;=</SEQ>
+        <SEQ TYPE="OPERATOR">&gt;&gt;=</SEQ>
+        <SEQ TYPE="OPERATOR">-</SEQ>
+        <SEQ TYPE="OPERATOR">#</SEQ>
+        <SEQ TYPE="OPERATOR">~</SEQ>
+
+        <!-- brackets and braces -->
+        <SEQ TYPE="OPERATOR">}</SEQ>
+        <SEQ TYPE="OPERATOR">{</SEQ>
+        <SEQ TYPE="OPERATOR">]</SEQ>
+        <SEQ TYPE="OPERATOR">[</SEQ>
+
+        <!-- labels: TODO later, not yet decided
+        <MARK_PREVIOUS TYPE="LABEL" MATCH_TYPE="OPERATOR"
+            AT_WHITESPACE_END="TRUE">:</MARK_PREVIOUS>
+        -->
+
+        <!-- Function calls -->
+        <MARK_PREVIOUS TYPE="FUNCTION" MATCH_TYPE="OPERATOR">(</MARK_PREVIOUS>
+        <SEQ TYPE="OPERATOR">)</SEQ>
+        <MARK_PREVIOUS TYPE="FUNCTION" MATCH_TYPE="OPERATOR">"</MARK_PREVIOUS>
+        <SEQ TYPE="OPERATOR">"</SEQ>
+        <MARK_PREVIOUS TYPE="FUNCTION" MATCH_TYPE="OPERATOR">'</MARK_PREVIOUS>
+        <SEQ TYPE="OPERATOR">'</SEQ>
+
+        <KEYWORDS>
+            <!-- reserved core keywords -->
+            <KEYWORD3>__FILE__</KEYWORD3>
+            <KEYWORD3>__LINE__</KEYWORD3>
+            <KEYWORD1>again</KEYWORD1>
+            <KEYWORD1>and</KEYWORD1>
+            <KEYWORD1>break</KEYWORD1>
+            <KEYWORD1>case</KEYWORD1>
+            <KEYWORD1>cfn</KEYWORD1>
+            <KEYWORD1>coro</KEYWORD1>
+            <KEYWORD1>do</KEYWORD1>
+            <KEYWORD1>else</KEYWORD1>
+            <KEYWORD3>false</KEYWORD3>
+            <KEYWORD1>fn</KEYWORD1>
+            <KEYWORD1>for</KEYWORD1>
+            <KEYWORD2>glob</KEYWORD2>
+            <KEYWORD1>goto</KEYWORD1>
+            <KEYWORD1>if</KEYWORD1>
+            <KEYWORD2>in</KEYWORD2>
+            <KEYWORD1>let</KEYWORD1>
+            <KEYWORD1>match</KEYWORD1>
+            <KEYWORD1>module</KEYWORD1>
+            <KEYWORD3>nil</KEYWORD3>
+            <KEYWORD1>not</KEYWORD1>
+            <KEYWORD1>or</KEYWORD1>
+            <KEYWORD1>quote</KEYWORD1>
+            <KEYWORD2>rec</KEYWORD2>
+            <KEYWORD1>return</KEYWORD1>
+            <KEYWORD1>seq</KEYWORD1>
+            <KEYWORD3>true</KEYWORD3>
+            <KEYWORD1>while</KEYWORD1>
+            <KEYWORD1>yield</KEYWORD1>
+
+            <!-- special names and builtins -->
+            <KEYWORD2>assert</KEYWORD2>
+            <KEYWORD2>self</KEYWORD2>
+        </KEYWORDS>
+    </RULES>
+    <RULES SET="NESTED_COMMENT" DEFAULT="COMMENT1">
+        <SPAN TYPE="COMMENT1" DELEGATE="NESTED_COMMENT">
+            <BEGIN>/*</BEGIN>
+            <END>*/</END>
+        </SPAN>
+    </RULES>
+    <RULES SET="NESTED_LITERAL" DEFAULT="LITERAL1">
+        <SPAN TYPE="LITERAL1" DELEGATE="NESTED_LITERAL">
+            <BEGIN>[[</BEGIN>
+            <END>]]</END>
+        </SPAN>
+    </RULES>
+</MODE>

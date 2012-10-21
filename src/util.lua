@@ -328,13 +328,12 @@ return {
 
     -- checks if the given character can be in an identifier
     is_ident = function(ch)
-        return is_alnum(ch) or (ch == "_") or (ch == "?")
+        return is_alnum(ch) or (ch == "_")
     end,
 
     -- checks if the given character can be in a keyword
     is_keyword = function(ch)
-        return is_alnum(ch) or (ch == "_") or (ch == "?")
-                            or (ch == "@") or (ch == "#")
+        return is_alnum(ch) or (ch == "_") or (ch == "@") or (ch == "#")
     end,
 
     -- fatal error, prints to stderr and exits
