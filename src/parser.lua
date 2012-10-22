@@ -105,11 +105,11 @@ local gen_ass = function(names, vals)
 end
 
 local gen_binexpr = function(op, lhs, rhs)
-    return concat { lhs, " ", op, " ", rhs }
+    return concat { "(", lhs, " ", op, " ", rhs, ")" }
 end
 
 local gen_unexpr = function(op, rhs)
-    return concat { op, " ", rhs }
+    return concat { "(", op, " ", rhs, ")" }
 end
 
 local gen_seq = function(lst)
@@ -221,6 +221,7 @@ local Expr = util.Object:clone {
 }
 
 local Call_Expr
+local Value_Expr
 
 local Symbol_Expr = Expr:clone {
     name = "Symbol_Expr",
@@ -271,7 +272,7 @@ local Index_Expr = Expr:clone {
     end
 }
 
-local Value_Expr = Expr:clone {
+Value_Expr = Expr:clone {
     name = "Value_Expr",
 
     __init = function(self, val)
@@ -313,9 +314,14 @@ local Return_Expr = Expr:clone {
 
         local exps = {}
         for i = 1, len do
-            exps[#exps + 1] = exprs[i]:generate(sc, {
-                no_local = (i == len)
-            })
+            local expr = exprs[i]
+            if expr:is_a(Value_Expr) or i == len then
+                exps[#exps + 1] = expr:generate(sc, {})
+            else
+                local sym = unique_sym("ret")
+                sc:push(gen_local(sym, expr:generate(sc, {})))
+                exps[#exps + 1] = sym
+            end
         end
         sc:push(gen_ret(gen_seq(exps)))
         sc:lock()
@@ -362,13 +368,9 @@ local Block_Expr = Expr:clone {
             }))
         elseif kwargs.no_scope then
             if sc:is_a(Function_State) or kwargs.return_val then
-                sc:push(gen_ret(exprs[len]:generate(sc, {
-                    no_local = true
-                })))
+                sc:push(gen_ret(exprs[len]:generate(sc, {})))
             else
-                return exprs[len]:generate(sc, {
-                    no_local = true
-                })
+                return exprs[len]:generate(sc, {})
             end
         elseif kwargs.statement then
             scope:push(exprs[len]:generate(scope, {
@@ -378,9 +380,7 @@ local Block_Expr = Expr:clone {
         else
             local sym = unique_sym("block")
             sc:push(gen_local(sym))
-            scope:push(gen_ass(sym, exprs[len]:generate(scope, {
-                no_local = true
-            })))
+            scope:push(gen_ass(sym, exprs[len]:generate(scope, {})))
             sc:push(gen_block(scope))
             return sym
         end
@@ -432,25 +432,16 @@ local Table_Expr = Expr:clone {
             local pair = assarr[i]
             local e = pair[2]
             if e:is_a(Value_Expr) then
-                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {
-                    no_local = true
-                }), pair[2]:generate(sc, {}))
+                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {}),
+                    pair[2]:generate(sc, {}))
             else
                 local sym = unique_sym("map")
                 sc:push(gen_local(sym, pair[2]:generate(sc, {})))
-                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc,
-                    { no_local = true }), sym)
+                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {}), sym)
             end
         end
 
-        if kwargs.no_local then
-            return gen_table(sc, syms, kvs)
-        end
-
-        local sym = unique_sym("table")
-        sc:push(gen_local(sym))
-        sc:push(gen_ass(sym, gen_table(sc, syms, kvs)))
-        return sym
+        return gen_table(sc, syms, kvs)
     end,
 
     to_lua = function(self, i)
@@ -489,14 +480,13 @@ Binary_Expr = Expr:clone {
         local op = self.op
         if Ass_Ops[op] then
             local lhs, sym = self.lhs, unique_sym("rhs")
-            local iv, av = lhs:generate(sc, { no_local = true })
+            local iv, av = lhs:generate(sc, {})
             if not av then av = iv end
             if op == "=" then
-                sc:push(gen_local(sym, self.rhs:generate(sc,
-                    { no_local = true })))
+                sc:push(gen_local(sym, self.rhs:generate(sc, {})))
             else
                 sc:push(gen_local(sym, gen_binexpr(op:sub(1, #op - 1), av,
-                    self.rhs:generate(sc, { no_local = true }))))
+                    self.rhs:generate(sc, {}))))
             end
             sc:push(gen_ass(av, sym))
             return sym, av
@@ -504,14 +494,7 @@ Binary_Expr = Expr:clone {
 
         local lhs = self.lhs:generate(sc, {})
         local rhs = self.rhs:generate(sc, {})
-
-        if kwargs.no_local then
-            return gen_binexpr(self.op, lhs, rhs)
-        end
-
-        local sym = unique_sym(self.op)
-        sc:push(gen_local(sym, gen_binexpr(self.op, lhs, rhs)))
-        return sym
+        return gen_binexpr(self.op, lhs, rhs)
     end,
 
     is_lvalue = function(self)
@@ -536,14 +519,7 @@ local Unary_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         local rhs = self.rhs:generate(sc, {})
-
-        if kwargs.no_local then
-            return gen_unexpr(self.op, rhs)
-        end
-
-        local sym = unique_sym(self.op)
-        sc:push(gen_local(sym, gen_unexpr(self.op, rhs)))
-        return sym
+        return gen_unexpr(self.op, rhs)
     end,
 
     to_lua = function(self, i)
@@ -563,14 +539,16 @@ local Let_Expr = Expr:clone {
         local syms = {}
         local len = #self.assign
 
-        for i = 1, len - 1 do
-            local nd = self.assign[i]
-            syms[#syms + 1] = nd:generate(sc, {})
+        for i = 1, len do
+            local expr = self.assign[i]
+            if expr:is_a(Value_Expr) or i == len then
+                syms[#syms + 1] = expr:generate(sc, {})
+            else
+                local sym = unique_sym("let")
+                sc:push(gen_local(sym, expr:generate(sc, {})))
+                syms[#syms + 1] = sym
+            end
         end
-
-        syms[#syms + 1] = self.assign[len]:generate(sc, {
-            no_local = true
-        })
 
         local idents = gen_seq(self.idents)
         syms = gen_seq(syms)
@@ -640,9 +618,7 @@ local Function_Expr = Expr:clone {
                 fs:push(gen_local(name))
 
                 local tsc = Scope(fs, fs.indent + 1)
-                tsc:push(gen_ass(name, defs[i]:generate(tsc, {
-                    no_local = true
-                })))
+                tsc:push(gen_ass(name, defs[i]:generate(tsc, {})))
 
                 local fsc = Scope(fs, fs.indent + 1)
                 fsc:push(gen_ass(name, "select(" .. i .. ", ...)"))
@@ -659,10 +635,10 @@ local Function_Expr = Expr:clone {
                 return_val = true
             })
         else
-            fs:push(gen_ret(body:generate(fs, {
-                no_local = true,
+            local ret = body:generate(fs, {
                 return_val = true
-            })))
+            })
+            if ret then fs:push(gen_ret(ret)) end
         end
         return gen_fun(gen_seq(np), fs)
     end,
@@ -706,7 +682,6 @@ local If_Expr = Expr:clone {
         tsc  = Scope(sc.fstate, sc.indent + 1)
         tval = self.tval:generate(tsc, {
             no_scope  = true,
-            no_local  = true,
             statement = stat,
             return_val = rval
         })
@@ -716,7 +691,6 @@ local If_Expr = Expr:clone {
             fsc  = Scope(sc.fstate, sc.indent + 1)
             fval = self.fval:generate(fsc, {
                 no_scope  = true,
-                no_local  = true,
                 statement = stat,
                 return_val = rval
             })
@@ -727,9 +701,7 @@ local If_Expr = Expr:clone {
             if fsc then fsc:push((rval and not fscoped)
                 and gen_ret(fval) or fval) end
 
-            sc:push(gen_if(self.cond:generate(sc, {
-                no_local = true
-            }), tsc, fsc))
+            sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
         else
             local sym = unique_sym("if")
 
@@ -737,9 +709,7 @@ local If_Expr = Expr:clone {
             if fsc then fsc:push(gen_ass(sym, fval)) end
 
             sc:push(gen_local(sym))
-            sc:push(gen_if(self.cond:generate(sc, {
-                no_local = true
-            }), tsc, fsc))
+            sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
 
             return sym
         end
@@ -771,9 +741,7 @@ local While_Expr = Expr:clone {
             no_scope  = true
         })
 
-        sc:push(gen_while(self.cond:generate(sc, {
-            no_local = true
-        }), bsc))
+        sc:push(gen_while(self.cond:generate(sc, {}), bsc))
     end,
 
     is_scoped = function(self)
@@ -830,25 +798,23 @@ Call_Expr = Expr:clone {
 
         for i = 1, len do
             local par = self.params[i]
-            syms[#syms + 1] = par:generate(sc, {
-                no_local = par:is_a(Call_Expr) or par:is_a(Value_Expr)
-            })
+            if par:is_a(Value_Expr) or i == len then
+                syms[#syms + 1] = par:generate(sc, {})
+            else
+                local sym = unique_sym("arg")
+                sc:push(gen_local(sym, par:generate(sc, {})))
+                syms[#syms + 1] = sym
+            end
         end
 
         syms = gen_seq(syms)
 
-        local expr = self.expr:generate(sc, {
-            no_local = true
-        })
+        local expr = self.expr:generate(sc, {})
 
         if kwargs.statement then
             sc:push(gen_call(expr, syms))
-        elseif kwargs.no_local then
-            return gen_call(expr, syms)
         else
-            local sym = unique_sym("call")
-            sc:push(gen_local(sym, gen_call(expr, syms)))
-            return sym
+            return gen_call(expr, syms)
         end
     end,
 
