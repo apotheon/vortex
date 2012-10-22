@@ -269,13 +269,17 @@ local lex = function(ls, token)
             next_char(ls)
             return "!="
 
-        -- +, +=, ++
+        -- +, +=, ++, ++=
         elseif curr == "+" then
             next_char(ls)
 
-            -- ++
+            -- ++, ++=
             if ls.current == "+" then
                 next_char(ls)
+                if ls.current == "=" then
+                    next_char(ls)
+                    return "++="
+                end
                 return "++"
             -- +=
             elseif ls.current == "=" then
@@ -301,13 +305,17 @@ local lex = function(ls, token)
             else
                 return "-"
             end
-        -- *, *=, **
+        -- *, *=, **, **=
         elseif curr == "*" then
             next_char(ls)
 
-            -- **
+            -- **, **=
             if ls.current == "*" then
                 next_char(ls)
+                if ls.current == "=" then
+                    next_char(ls)
+                    return "**="
+                end
                 return "**"
             -- *=
             elseif ls.current == "=" then
