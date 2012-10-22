@@ -79,6 +79,8 @@
         <SEQ TYPE="OPERATOR">^=</SEQ>
         <SEQ TYPE="OPERATOR">++</SEQ>
         <SEQ TYPE="OPERATOR">::</SEQ>
+        <SEQ TYPE="OPERATOR">++=</SEQ>
+        <SEQ TYPE="OPERATOR">**=</SEQ>
         <SEQ TYPE="OPERATOR">&amp;</SEQ>
         <SEQ TYPE="OPERATOR">|</SEQ>
         <SEQ TYPE="OPERATOR">^</SEQ>
