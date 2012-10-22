@@ -66,14 +66,17 @@ if _VERSION == "Lua 5.2" then
         return x
     end
 else
-    M.__vx_band  = _G.bit.band
-    M.__vx_bor   = _G.bit.bor
-    M.__vx_bxor  = _G.bit.bxor
-    M.__vx_bnot  = _G.bit.bnot
-    M.__vx_arsh  = _G.bit.arshift
-    M.__vx_lsh   = _G.bit.lshift
-    M.__vx_rsh   = _G.bit.rshift
-    M.__vx_bswap = _G.bit.bswap
+    local bit = require "bit"
+    M.__vx_band  = bit.band
+    M.__vx_bor   = bit.bor
+    M.__vx_bxor  = bit.bxor
+    M.__vx_bnot  = bit.bnot
+    M.__vx_arsh  = bit.arshift
+    M.__vx_lsh   = bit.lshift
+    M.__vx_rsh   = bit.rshift
+    M.__vx_rol   = bit.rol
+    M.__vx_ror   = bit.ror
+    M.__vx_bswap = bit.bswap
 end
 
 return M
