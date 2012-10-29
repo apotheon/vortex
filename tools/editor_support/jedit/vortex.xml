@@ -55,6 +55,7 @@
 
         <!-- sequences -->
         <SEQ TYPE="KEYWORD2">-></SEQ>
+        <SEQ TYPE="OPERATOR">...</SEQ>
 
         <!-- operators -->
         <SEQ TYPE="OPERATOR">+</SEQ>

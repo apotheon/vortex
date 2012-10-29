@@ -52,8 +52,11 @@ local Ass_Ops = {
 local syntax_error = lexer.syntax_error
 local case_class = util.case_class
 local unique_sym = util.unique_sym
+local get_syms = util.get_syms
 local hash_sym = util.hash_sym
 local map = util.map
+
+local get_rt_fun
 
 local assert_tok = function(ls, tok, allow)
     local n = ls.token.name
@@ -144,6 +147,10 @@ end
 
 local gen_ret = function(vals)
     return concat { "return ", vals }
+end
+
+local gen_require = function(name)
+    return concat { 'require("', name, '")' }
 end
 
 local gen_call = function(expr, params)
@@ -763,6 +770,22 @@ local Seq_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
+
+        local fs = Function_State(sc.fstate, sc.indent + 1)
+        local body = self.expr
+        if body:is_a(Block_Expr) then
+            body:generate(fs, {
+                no_scope = true,
+                return_val = true
+            })
+        else
+            local ret = body:generate(fs, {
+                return_val = true
+            })
+            if ret then fs:push(gen_ret(ret)) end
+        end
+        return gen_call(sq, gen_call(cc, gen_fun("", fs)))
     end,
 
     to_lua = function(self, i)
@@ -1198,13 +1221,28 @@ return {
         util.randomseed(os.clock() * os.time())
 
         local ms = Scope(nil, 0)
+
+        local rts = unique_sym("rt")
+        local hdr = { gen_local(rts, gen_require("rt_init")) }
+        local rtcache = {}
+        get_rt_fun = function(name)
+            local n = rtcache[name]
+            if not n then
+                local sym = unique_sym("rtfn")
+                hdr[#hdr + 1] = gen_local(sym, rts .. ".__vx_" .. name)
+                rtcache[name] = sym
+                return sym
+            end
+            return n
+        end
+
         -- generate the code
         for i = 1, #ast do
             ast[i]:generate(ms, {
                 statement = true
             })
         end
-        local str = ms:build()
+        local str = concat(hdr, "\n") .. "\n" .. ms:build()
 
         local f = io.open(fname, "r")
         print("-- input -- ")

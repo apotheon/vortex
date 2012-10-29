@@ -107,3 +107,8 @@ tbl[foo()] += 15
 print(tbl[2])
 
 print(i += 10, i += 324, i, i * 3)
+
+let a, b, c = seq {
+    return (5, 10, 15)
+}
+print(a, b, c)

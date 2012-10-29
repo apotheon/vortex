@@ -303,6 +303,10 @@ local unique_sym = function(suffix)
     return tc { "__", uq, "_", hash_sym(suffix) }
 end
 
+local get_syms = function(suffix)
+    return syms[suffix]
+end
+
 local io_stderr = io.stderr
 local io_write  = io.write
 
@@ -350,6 +354,7 @@ return {
     randomseed = randomseed,
     random = rnd,
     unique_sym = unique_sym,
+    get_syms = get_syms,
     hash_sym = hash_sym,
 
     parse_args = function(argv)

@@ -9,13 +9,13 @@
 
 local M = require("rt.core")
 
-local cs, cr, cy, ta, tu, sl = M.__vx_coro_status, M.__vx_coro_create,
+local cs, cr, cy, ta, tu, sl = M.__vx_coro_status, M.__vx_coro_resume,
                                M.__vx_coro_yield,  M.__vx_tbl_append,
                                M.__vx_tbl_unpack,  M.__vx_select
 M.__vx_seq_create = function(coro)
     local rets = {}
     while cs(coro) ~= "dead" do
-        ta(rets, select(2, cr(coro))
+        ta(rets, select(2, cr(coro)))
     end
     return tu(rets)
 end
