@@ -8,6 +8,7 @@
     <meta name="Copyright" content="Copyright (C) 2012 q66"/>
     <meta name="Language" content="en"/>
     <link rel="stylesheet" type="text/css" href="vortex.css"/>
+    <script type="text/javascript" src="vortex.js"></script>
     <script type="text/javascript">
       (function() {
         var po = document.createElement('script'); po.type = 'text/javascript'; po.async = true;
@@ -16,7 +17,7 @@
       })();
     </script>
 </head>
-<body>
+<body onload="prettify_all();">
     <div id="logo">
         <a href="http://quaker66.github.com/vortex/">Vortex</a>
     </div>
@@ -46,16 +47,16 @@
             follows both Lua and "batteries included" philosophies. Note: <span class="note">Vortex is not stable at this point
             and many of the features are incomplete/missing/undecided on.</span></p>
             <h3>First, a small taste of the language.</h3>
-            <pre class="code"><span class="kw1">let</span> env = [ a = <span class="num">1</span>, b = <span class="num">2</span>, c = <span class="num">3</span> ]
-<span class="kw1">let</span> Add, Mul, Var, Num =
-    <span class="kw1">fn</span> a, b <span class="kw2">-></span> <span class="kw1">fn</span> env <span class="kw2">-></span> <span class="call">a</span>(env) + <span class="call">b</span>(env),
-    <span class="kw1">fn</span> a, b <span class="kw2">-></span> <span class="kw1">fn</span> env <span class="kw2">-></span> <span class="call">a</span>(env) * <span class="call">b</span>(env),
-    <span class="kw1">fn</span> a    <span class="kw2">-></span> <span class="kw1">fn</span> env <span class="kw2">-></span> env[a],
-    <span class="kw1">fn</span> a    <span class="kw2">-></span> <span class="kw1">fn</span> env <span class="kw2">-></span> a
+            <pre class="code">let env = [ a = 1, b = 2, c = 3 ]
+let Add, Mul, Var, Num =
+    fn a, b -> fn env -> a(env) + b(env),
+    fn a, b -> fn env -> a(env) * b(env),
+    fn a    -> fn env -> env[a],
+    fn a    -> fn env -> a
 
-<span class="comment">// (a + (2 * b)) * c</span>
-<span class="kw1">let</span> tree = <span class="call">Mul</span>(<span class="call">Add</span>(<span class="call">Var</span>(<span class="str">"a"</span>), <span class="call">Mul</span>(<span class="call">Num</span>(<span class="num">2</span>), <span class="call">Var</span>(<span class="str">"b"</span>))), <span class="call">Var</span>(<span class="str">"c"</span>))
-<span class="call">print</span>(<span class="call">tree</span>(env))</pre>
+// (a + (2 * b)) * c
+let tree = Mul(Add(Var("a"), Mul(Num(2), Var("b"))), Var("c"))
+print(tree(env))</pre>
             <h3>Vortex is convenient.</h3>
             <p>It includes familiar curly braced syntax inspired by languages
             such as Lua, Scheme, Rust, OCaml and F#. Staying true to its roots,
@@ -114,38 +115,38 @@
             formatting of the source code, but at the same time attempts to make
             it as clean as possible. Here you can see some of the features Vortex
             has.</p>
-            <pre class="code"><span class="comment">/* tail recursive, pattern matched factorial
+            <pre class="code">/* tail recursive, pattern matched factorial
    /* long comments can be nested */
- */</span>
-<span class="kw1">let</span> <span class="kw2">rec</span> fact = <span class="kw1">fn</span> n, acc = <span class="num">1</span> <span class="kw2">-></span>
-    | <span class="num">0</span> <span class="kw2">-></span> acc
-    | _ <span class="kw2">-></span> <span class="call">fact</span>(n - <span class="num">1</span>, n * acc)
+ */
+let rec fact = fn n, acc = 1 ->
+    | 0 -> acc
+    | _ -> fact(n - 1, n * acc)
 
-<span class="comment">// sequences</span>
-<span class="kw1">let</span> a, b, c = <span class="kw1">seq</span> <span class="kw2">-></span> <span class="call">pairs</span>([ <span class="num">5</span>, <span class="num">10</span>, <span class="num">15</span> ], <span class="kw1">fn</span> k, v <span class="kw2">-></span> <span class="kw1">yield</span> v)
-<span class="call">assert</span>(a == <span class="num">5</span> <span class="kw1">and</span> b == <span class="num">10</span> <span class="kw1">and</span> c == <span class="num">15</span>)
+// sequences
+let a, b, c = seq -> pairs([ 5, 10, 15 ], fn k, v -> yield v)
+assert(a == 5 and b == 10 and c == 15)
 
-<span class="comment">// sequences as list comprehensions</span>
-<span class="kw1">let</span> fun = <span class="kw1">fn</span> ... <span class="kw2">-></span>
-    [ <span class="kw1">seq</span> <span class="kw2">-></span> <span class="call">pairs</span>([ ... ], <span class="kw1">fn</span> k, v <span class="kw2">-></span> <span class="kw1">yield</span> v * <span class="num">2</span>) ]
-<span class="call">assert</span>(<span class="call">fun</span>(<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>)[<span class="num">3</span>] == <span class="num">6</span>)
+// sequences as list comprehensions
+let fun = fn ... ->
+    [ seq -> pairs([ ... ], fn k, v -> yield v * 2) ]
+assert(fun(1, 2, 3)[3] == 6)
 
-<span class="comment">// hybrid prototype/class object system with differential inheritance</span>
-<span class="kw1">let</span> Foo = <span class="kw1">clone</span> <span class="kw2">Object</span> [
-    __init = <span class="kw1">fn</span> <span class="kw2">self</span>, x {
-        <span class="kw2">self</span>.x = x
+// hybrid prototype/class object system with differential inheritance
+let Foo = clone Object [
+    __init = fn self, x {
+        self.x = x
     },
 
-    boo = <span class="kw1">fn</span> <span class="kw2">self</span> <span class="kw2">-></span> <span class="call">print</span>(<span class="str">"boo!"</span>, <span class="kw2">self</span>.x)
+    boo = fn self -> print("boo!", self.x)
 ]
-<span class="kw1">let</span> Bar = <span class="kw1">clone</span> Foo [
-    boo = <span class="kw1">fn</span> <span class="kw2">self</span> {
-        <span class="call">print</span>(<span class="str">"new boo!"</span>)
-        <span class="call">Foo.boo</span>(<span class="kw2">self</span>)
+let Bar = clone Foo [
+    boo = fn self {
+        print("new boo!")
+        Foo.boo(self)
     }
 ]
-<span class="kw1">let</span> inst = <span class="call">Bar</span>(<span class="num">5</span>)
-<span class="call">inst:boo</span>()</pre>
+let inst = Bar(5)
+inst:boo()</pre>
         </div>
         <br class="sep"/>
         <div class="box">
