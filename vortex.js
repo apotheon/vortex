@@ -304,6 +304,10 @@ function prettify_all() {
     var ndl = document.getElementsByClassName("code");
     for (var i = 0; i < ndl.length; ++i) {
         var nd = ndl[i];
-        nd.innerHTML = process_syntax(nd.innerText);
+        var txt = nd.innerText;
+        if (txt == undefined) {
+            txt = nd.textContent;
+        }
+        nd.innerHTML = process_syntax(txt);
     }
 }
