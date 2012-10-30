@@ -181,8 +181,10 @@ local gen_table = function(sc, arr, ass)
         end
     end
 
-    if nrec > 0 then tbl[#tbl + 1] = "," end
-    tbl[#tbl + 1] = "\n"
+    if narr > 0 then
+        if nrec > 0 then tbl[#tbl + 1] = "," end
+        tbl[#tbl + 1] = "\n"
+    end
 
     for i = 1, nrec do
         local e = i % 2
