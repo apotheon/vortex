@@ -301,7 +301,8 @@ local Vararg_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         local fs = sc:is_a(Function_State) and sc or sc.fstate
-        return "select(" .. (fs.ndefargs + 1) .. ", ...)"
+        local sl = get_rt_fun("select")
+        return sl .. "(" .. (fs.ndefargs + 1) .. ", ...)"
     end,
 
     to_lua = function(self, i)
@@ -660,7 +661,8 @@ local Function_Expr = Expr:clone {
 
         if ndefs > 0 then
             local nd = unique_sym("#")
-            fs:push(gen_local(nd, "select('#', ...)"))
+            local sl = get_rt_fun("select")
+            fs:push(gen_local(nd, sl .. "('#', ...)"))
 
             for i = 1, ndefs do
                 local name = args[pargs + i]
@@ -670,7 +672,7 @@ local Function_Expr = Expr:clone {
                 tsc:push(gen_ass(name, defs[i]:generate(tsc, {})))
 
                 local fsc = Scope(fs, fs.indent + 1)
-                fsc:push(gen_ass(name, "select(" .. i .. ", ...)"))
+                fsc:push(gen_ass(name, sl .. "(" .. i .. ", ...)"))
 
                 fs:push(gen_if(gen_binexpr("<", nd, i), tsc, fsc))
             end
@@ -1297,6 +1299,9 @@ return {
                 statement = true
             })
         end
+        local se, de = get_rt_fun("env_set"), get_rt_fun("def_env")
+        hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
+
         local str = concat(hdr, "\n") .. "\n" .. ms:build()
 
         local f = io.open(fname, "r")

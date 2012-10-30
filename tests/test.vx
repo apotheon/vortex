@@ -114,3 +114,4 @@ let a, b, c, d, e, f = seq {
     yield fact(6)
 }
 print(a, b, c, d, e, f)
+print(_L, _G, _R, _VERSION)
