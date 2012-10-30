@@ -108,7 +108,9 @@ print(tbl[2])
 
 print(i += 10, i += 324, i, i * 3)
 
-let a, b, c = seq {
-    return (5, 10, 15)
+let a, b, c, d, e, f = seq {
+    yield (5, 10, 15)
+    yield ("hello", 3.14)
+    yield fact(6)
 }
-print(a, b, c)
+print(a, b, c, d, e, f)

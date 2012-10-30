@@ -350,6 +350,47 @@ local Return_Expr = Expr:clone {
     end
 }
 
+local Yield_Expr = Expr:clone {
+    name = "Yield_Expr",
+
+    __init = function(self, exprs)
+        self.exprs = exprs
+    end,
+
+    generate = function(self, sc, kwargs)
+        local cy = get_rt_fun("coro_yield")
+        local exprs = self.exprs
+        local len   = #exprs
+
+        local exps = {}
+        for i = 1, len do
+            local expr = exprs[i]
+            if expr:is_a(Value_Expr) or i == len then
+                exps[#exps + 1] = expr:generate(sc, {})
+            else
+                local sym = unique_sym("yield")
+                sc:push(gen_local(sym, expr:generate(sc, {})))
+                exps[#exps + 1] = sym
+            end
+        end
+        return gen_call(cy, gen_seq(exps))
+    end,
+
+    to_lua = function(self, i)
+        local exprs
+        if #self.exprs == 0 then
+            exprs = "{}"
+        else
+            local exprt = map(self.exprs, function(expr)
+                return expr:to_lua(i + 1) end)
+            exprs = "{\n" .. gen_indent(i + 1)
+                .. concat(exprt, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Yield_Expr(%s)"):format(exprs)
+    end
+}
+
 local Block_Expr = Expr:clone {
     name = "Block_Expr",
 
@@ -1148,6 +1189,18 @@ local parse_return = function(ls)
     return Return_Expr({ parse_expr(ls) })
 end
 
+local parse_yield = function(ls)
+    ls:get()
+    if ls.token.name == "(" then
+        ls:get()
+        local exprs = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        return Yield_Expr(exprs)
+    end
+    return Yield_Expr({ parse_expr(ls) })
+end
+
 -- main expression parsing function
 parse_expr = function(ls)
     local tok  = ls.token
@@ -1186,6 +1239,8 @@ parse_expr = function(ls)
         return parse_while(ls)
     elseif name == "return" then
         return parse_return(ls)
+    elseif name == "yield" then
+        return parse_yield(ls)
     elseif name == "{" then
         return parse_block(ls)
     elseif name == "[" then
