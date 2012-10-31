@@ -49,16 +49,14 @@ It can compile and run a few examples. Mostly incomplete. A few approximations:
 
 |Component       |Status|
 |----------------|------|
-|Formal grammar  |80%   |
-|Lexer           |80%   |
-|Parser          |30%   |
-|Codegen         |15%   |
-|Runtime         |0%    |
+|Formal grammar  |90%   |
+|Lexer           |90%   |
+|Parser          |60%   |
+|Codegen         |30%   |
+|Runtime         |20%   |
 |Standard library|0%    |
 
-More descriptive table coming later. The language is far from finalized and
-the current formal grammar definitions are out of date (instead see the
-reference manual).
+More descriptive table coming later.
 
 ## Example code
 
