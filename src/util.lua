@@ -8,6 +8,19 @@
 -- support Lua and LuaJIT
 local bit = require (_VERSION == "Lua 5.2" and "bit32" or "bit")
 
+META = {
+    general = {
+        version = 0.01
+    },
+    lexer = {
+    },
+    parser = {
+    },
+    cgen = {
+        indent = 4
+    }
+}
+
 --
 -- stream utilities
 --

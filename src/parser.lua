@@ -1263,65 +1263,50 @@ parse_expr = function(ls)
     end
 end
 
-return {
-    parse = function(fname, reader, writer)
-        -- init the lexer
-        local ls = lexer.init(fname, reader)
+local parse = function(fname, reader)
+    local ls = lexer.init(fname, reader)
+    ls:get()
 
-        -- first token
-        ls:get()
-
-        -- parse it recursively
-        local ast = {}
-        while ls.token.name ~= "<eos>" do
-            ast[#ast + 1] = parse_expr(ls)
-        end
-
-        util.randomseed(os.clock() * os.time())
-
-        local ms = Scope(nil, 0)
-
-        local rts = unique_sym("rt")
-        local hdr = { gen_local(rts, gen_require("rt_init")) }
-        local rtcache = {}
-        get_rt_fun = function(name)
-            local n = rtcache[name]
-            if not n then
-                local sym = unique_sym("rtfn")
-                hdr[#hdr + 1] = gen_local(sym, rts .. ".__vx_" .. name)
-                rtcache[name] = sym
-                return sym
-            end
-            return n
-        end
-
-        -- generate the code
-        for i = 1, #ast do
-            ast[i]:generate(ms, {
-                statement = true
-            })
-        end
-        local se, de = get_rt_fun("env_set"), get_rt_fun("def_env")
-        hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
-
-        local str = concat(hdr, "\n") .. "\n" .. ms:build()
-
-        local f = io.open(fname, "r")
-        print("-- input -- ")
-        print(f:read("*all"))
-        f:close()
-
-        print("-- output --")
-        print(str)
-        print("\n-- test --")
-        local f, err = loadstring(str)
-        if not f then
-            print("ERROR: " .. err)
-        else
-            f()
-        end
-
-        --print("------ Serialized AST ------")
-        --print(util.serialize(ast, true))
+    local ast = {}
+    while ls.token.name ~= "<eos>" do
+        ast[#ast + 1] = parse_expr(ls)
     end
+
+    return ast
+end
+
+local build = function(ast)
+    util.randomseed(os.clock() * os.time())
+
+    local ms = Scope(nil, 0)
+
+    local rts = unique_sym("rt")
+    local hdr = { gen_local(rts, gen_require("rt_init")) }
+    local rtcache = {}
+    get_rt_fun = function(name)
+        local n = rtcache[name]
+        if not n then
+            local sym = unique_sym("rtfn")
+            hdr[#hdr + 1] = gen_local(sym, rts .. ".__vx_" .. name)
+            rtcache[name] = sym
+            return sym
+        end
+        return n
+    end
+
+    -- generate the code
+    for i = 1, #ast do
+        ast[i]:generate(ms, {
+            statement = true
+        })
+    end
+    local se, de = get_rt_fun("env_set"), get_rt_fun("def_env")
+    hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
+
+    return concat(hdr, "\n") .. "\n" .. ms:build()
+end
+
+return {
+    parse = parse,
+    build = build
 }

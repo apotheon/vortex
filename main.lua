@@ -4,19 +4,6 @@
  Available under the terms of the MIT license.
 ]]
 
-META = {
-    general = {
-        version = 0.01
-    },
-    lexer = {
-    },
-    parser = {
-    },
-    cgen = {
-        indent = 4
-    }
-}
-
 package.path = package.path .. ";./src/?.lua"
 
 local util   = require("util")
@@ -43,16 +30,19 @@ end
 local compile_all = function(args)
     args = util.parse_args(args)
 
+    local stdo = nil
     for i = 1, #args do
         local v = args[i]
         if type(v) == "table" then
             local key, val = v[1], v[2]
             key:gsub("(.+)%.(.+)", function(a, b)
                 if not test_opt(a, b, val) then
-                    util.fatal("Invalid argument: -o " .. key .. "=" .. val)
+                    util.fatal("Invalid argument: -opt " .. key .. "=" .. val)
                 end
                 META[a][b] = val
             end)
+        elseif v == "-stdout" then
+            stdo = true
         else
             local  ifname = v
             local  rs = io.open(ifname, "r")
@@ -61,31 +51,31 @@ local compile_all = function(args)
                 return 1
             end
 
-            local  ofname
-            local  has_ext = ifname:find("%.vx")
-            if not has_ext then
-                ofname = ifname .. ".lua"
-            else
-                ofname = ifname:gsub("%.vx", ".lua")
-            end
-
-            local  ws = io.open(ofname, "w")
-            if not ws then
-                io.stderr:write("Cannot open " .. ofname .. " for writing.\n")
-                io.close(rs)
-                return 1
-            end
-
-            --print("Compiling " .. ifname .. " to " .. ofname .. "...")
-
-            local ret = parser.parse(
-                ifname, util.file_istream(rs), util.file_ostream(ws))
-
+            local ast  = parser.parse(ifname, util.file_istream(rs))
+            local code = parser.build(ast)
             io.close(rs)
-            io.close(ws)
 
-            if ret and ret ~= 0 then
-                return ret
+            if stdo then
+                print("--- output for file " .. ifname .. " ---")
+                print(code)
+            else
+                local  ofname
+                local  has_ext = ifname:find("%.vx")
+                if not has_ext then
+                    ofname = ifname .. ".lua"
+                else
+                    ofname = ifname:gsub("%.vx", ".lua")
+                end
+
+                local  ws = io.open(ofname, "w")
+                if not ws then
+                    io.stderr:write("Cannot open " .. ofname ..
+                        " for writing.\n")
+                    io.close(rs)
+                    return 1
+                end
+                ws:write(code)
+                io.close(ws)
             end
         end
     end
@@ -96,7 +86,7 @@ local main = function(args)
         help(args)
         return 0
     end
-    return compile_all(args)
+    return compile_all(args) or 0
 end
 
 os.exit(main(arg))
