@@ -27,6 +27,8 @@ env.raw_set  = M.__vx_rawset
 env.raw_len  = M.__vx_rawlen
 env.gcollect = M.__vx_gcollect
 env.type     = M.__vx_type
+env.pairs    = M.__vx_pairs
+env.ipairs   = M.__vx_ipairs
 
 env.unpack   = M.__vx_tbl_unpack
 

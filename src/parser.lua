@@ -804,9 +804,8 @@ local While_Expr = Expr:clone {
         bsc:push(gen_label(lbeg))
 
         local tsc = Scope(sc.fstate, bsc.indent + 1)
-        local cexpr = Unary_Expr("not", self.cond)
         tsc:push(gen_goto(lend))
-        bsc:push(gen_if(cexpr:generate(bsc, {}), tsc))
+        bsc:push(gen_if(gen_unexpr("not", self.cond:generate(bsc, {})), tsc))
         self.body:generate(bsc, {
             statement = true,
             no_scope  = true
@@ -846,6 +845,58 @@ local Do_While_Expr = Expr:clone {
         local tsc = Scope(sc.fstate, bsc.indent + 1)
         tsc:push(gen_goto(lbl))
         bsc:push(gen_if(self.cond:generate(bsc, {}), tsc))
+
+        sc:push(gen_block(bsc))
+    end,
+
+    is_scoped = function(self)
+        return true
+    end,
+
+    to_lua = function(self, i)
+        return ("While_Expr(%s, %s)"):format(
+            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
+    end
+}
+
+local For_Expr = Expr:clone {
+    name = "For_Expr",
+
+    __init = function(self, idents, exprs, body)
+        self.idents, self.exprs, self.body = idents, exprs, body
+    end,
+
+    generate = function(self, sc, kwargs)
+        local bsc = Scope(sc.fstate, sc.indent + 1)
+
+        local fsym, ssym, varsym
+            = unique_sym("f"), unique_sym("s"), unique_sym("var")
+
+        local lbl = unique_sym("lbl")
+        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+
+        local exps = {}
+        local el = self.exprs
+        for i = 1, #el do
+            exps[i] = el[i]:generate(bsc, {})
+        end
+        bsc:push(gen_local(gen_seq({ fsym, ssym, varsym }), gen_seq(exps)))
+        bsc:push(gen_label(lbeg))
+
+        local ids = self.idents
+        bsc:push(gen_local(gen_seq(ids), gen_call(fsym,
+            gen_seq({ ssym, varsym }))))
+
+        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        tsc:push(gen_goto(lend))
+        bsc:push(gen_if(gen_binexpr("==", ids[1], "nil"), tsc))
+        bsc:push(gen_ass(varsym, ids[1]))
+        self.body:generate(bsc, {
+            statement = true,
+            no_scope  = true
+        })
+        bsc:push(gen_goto(lbeg))
+        bsc:push(gen_label(lend))
 
         sc:push(gen_block(bsc))
     end,
@@ -1250,6 +1301,24 @@ local parse_dowhile = function(ls)
     return Do_While_Expr(parse_expr(ls), body)
 end
 
+local parse_for = function(ls)
+    ls:get()
+    local body
+    local tok = ls.token
+    local ids = parse_identlist(ls)
+    assert_tok(ls, "in")
+    ls:get()
+    local exprs = parse_exprlist(ls)
+    if tok.name == "{" then
+        body = parse_block(ls)
+    else
+        assert_tok(ls, "->")
+        ls:get()
+        body = parse_expr(ls)
+    end
+    return For_Expr(ids, exprs, body)
+end
+
 local parse_return = function(ls)
     ls:get()
     if ls.token.name == "(" then
@@ -1312,6 +1381,8 @@ parse_expr = function(ls)
         return parse_while(ls)
     elseif name == "do" then
         return parse_dowhile(ls)
+    elseif name == "for" then
+        return parse_for(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "yield" then
