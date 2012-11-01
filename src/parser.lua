@@ -170,47 +170,27 @@ local gen_index = function(sym, idx)
     return concat { sym, "[", idx, "]" }
 end
 
-local gen_table = function(sc, arr, ass)
+local gen_table = function(sc, t)
     local ind = (" "):rep((sc.indent + 1) * META.cgen.indent)
     local tbl = { "{\n" }
 
-    local narr, nrec = #arr, #ass
-    for i = 1, narr do
+    local len = #t
+    for i = 1, len do
         local e = i % 4
         if e == 1 then
             tbl[#tbl + 1] = ind
         end
 
-        tbl[#tbl + 1] = arr[i]
-        if i ~= narr then tbl[#tbl + 1] = "," end
-        if e == 0 then
+        tbl[#tbl + 1] = t[i]
+        if i ~= len then tbl[#tbl + 1] = "," end
+        if e == 0 and i ~= len then
             tbl[#tbl + 1] = "\n"
-        elseif i ~= narr then
+        elseif i ~= len then
             tbl[#tbl + 1] = " "
         end
     end
 
-    if narr > 0 then
-        if nrec > 0 then tbl[#tbl + 1] = "," end
-        tbl[#tbl + 1] = "\n"
-    end
-
-    for i = 1, nrec do
-        local e = i % 2
-        if e == 1 then
-            tbl[#tbl + 1] = ind
-        end
-
-        tbl[#tbl + 1] = ass[i]
-        if i ~= nrec then tbl[#tbl + 1] = "," end
-        if e == 0 then
-            tbl[#tbl + 1] = "\n"
-        elseif i ~= nrec then
-            tbl[#tbl + 1] = " "
-        end
-    end
-
-    tbl[#tbl + 1] = (" "):rep((sc.indent) * META.cgen.indent) .. "}"
+    tbl[#tbl + 1] = "\n" .. (" "):rep((sc.indent) * META.cgen.indent) .. "}"
     return concat(tbl)
 end
 
@@ -483,40 +463,42 @@ local Block_Expr = Expr:clone {
 local Table_Expr = Expr:clone {
     name = "Table_Expr",
 
-    __init = function(self, array, map)
-        self.array, self.map = array, map
+    __init = function(self, contents)
+        self.contents = contents
     end,
 
     generate = function(self, sc, kwargs)
-        local array, assarr = self.array, self.map
+        local tbl = self.contents
 
-        local syms = {}
-        for i = 1, #array do
-            local e = array[i]
-            if e:is_a(Value_Expr) then
-                syms[#syms + 1] = e:generate(sc, {})
-            else
-                local sym = unique_sym("arr")
-                sc:push(gen_local(sym, array[i]:generate(sc, {})))
-                syms[#syms + 1] = sym
-            end
-        end
-
+        sc.indent = sc.indent + 1
         local kvs = {}
-        for i = 1, #assarr do
-            local pair = assarr[i]
+        local len = #tbl
+        for i = 1, len do
+            local pair = tbl[i]
             local e = pair[2]
-            if e:is_a(Value_Expr) then
-                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {}),
-                    pair[2]:generate(sc, {}))
+            if e:is_a(Value_Expr) or i == len then
+                local p1 = pair[1]
+                if type(p1) == "number" then
+                    kvs[#kvs + 1] = pair[2]:generate(sc, {})
+                else
+                    kvs[#kvs + 1] = gen_ass("[" .. p1:generate(sc, {})
+                        .. "]", pair[2]:generate(sc, {}))
+                end
             else
                 local sym = unique_sym("map")
                 sc:push(gen_local(sym, pair[2]:generate(sc, {})))
-                kvs[#kvs + 1] = gen_ass(pair[1]:generate(sc, {}), sym)
+                local p1 = pair[1]
+                if type(p1) == "number" then
+                    kvs[#kvs + 1] = sym
+                else
+                    kvs[#kvs + 1] = gen_ass("[" .. p1:generate(sc, {})
+                        .. "]", sym)
+                end
             end
         end
+        sc.indent = sc.indent - 1
 
-        return gen_table(sc, syms, kvs)
+        return gen_table(sc, kvs)
     end,
 
     to_lua = function(self, i)
@@ -687,17 +669,23 @@ local Function_Expr = Expr:clone {
         if ndefs > 0 then
             local nd = unique_sym("#")
             local sl = get_rt_fun("select")
-            fs:push(gen_local(nd, sl .. "('#', ...)"))
+            fs:push(gen_local(nd, gen_call(sl, gen_seq({ "'#'", "..." }))))
 
             for i = 1, ndefs do
                 local name = args[pargs + i]
+                local val  = defs[i]
+                if val == "..." then
+                    fs:push(gen_local(name, gen_table(fs, { gen_call(sl,
+                        gen_seq({ i, "..." })) })))
+                    break
+                end
                 fs:push(gen_local(name))
 
                 local tsc = Scope(fs, fs.indent + 1)
                 tsc:push(gen_ass(name, defs[i]:generate(tsc, {})))
 
                 local fsc = Scope(fs, fs.indent + 1)
-                fsc:push(gen_ass(name, sl .. "(" .. i .. ", ...)"))
+                fsc:push(gen_ass(name, gen_call(sl, gen_seq({ i, "..." }))))
 
                 fs:push(gen_if(gen_binexpr("<", nd, i), tsc, fsc))
             end
@@ -1147,10 +1135,16 @@ local parse_arglist = function(ls)
         assert_tok(ls, "<ident>")
         ids[#ids + 1] = tok.value
 
-        if ls:lookahead() == "=" then
+        local lah = ls:lookahead()
+        if lah == "=" then
             ls:get() ls:get()
             if not defs then defs = {} end
             defs[#defs + 1] = parse_expr(ls)
+        elseif lah == "..." then
+            ls:get() ls:get()
+            if not defs then defs = {} end
+            defs[#defs + 1] = lah
+            break
         elseif defs then
             ls:get()
             assert_tok(ls, "=")
@@ -1183,22 +1177,24 @@ end
 
 local parse_table = function(ls)
     ls:get()
-    local tok, arr, ass = ls.token, {}, {}
+    local tok, tbl = ls.token, {}
 
     if tok.name == "]" then
         ls:get()
-        return Table_Expr(arr, ass)
+        return Table_Expr(tbl)
     end
 
     local tok = ls.token
+    local idx = 1
     repeat
         -- TODO: handle for expression keys
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Symbol_Expr(tok.value)
+            local name = Value_Expr('"' .. tok.value .. '"')
             ls:get() ls:get()
-            ass[#ass + 1] = { name, parse_expr(ls) }
+            tbl[#tbl + 1] = { name, parse_expr(ls) }
         else
-            arr[#arr + 1] = parse_expr(ls)
+            tbl[#tbl + 1] = { idx, parse_expr(ls) }
+            idx = idx + 1
         end
         if tok.name ~= "," then
             assert_tok(ls, "]")
@@ -1210,7 +1206,7 @@ local parse_table = function(ls)
     assert_tok(ls, "]")
     ls:get()
 
-    return Table_Expr(arr, ass)
+    return Table_Expr(tbl)
 end
 
 local parse_function = function(ls)
