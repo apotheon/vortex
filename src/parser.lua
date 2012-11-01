@@ -209,6 +209,14 @@ local gen_indent = function(lvl)
     return (" "):rep(lvl * META.cgen.indent)
 end
 
+local gen_label = function(name)
+    return "::" .. name .. "::"
+end
+
+local gen_goto = function(label)
+    return "goto " .. label
+end
+
 -- classes
 
 local Expr = util.Object:clone {
@@ -405,13 +413,13 @@ local Block_Expr = Expr:clone {
         local exprs = self.exprs
         local len   = #exprs
 
-        local scope = (kwargs.statement or not kwargs.no_scope) and
+        local scope = (kwargs.statement and not kwargs.no_scope) and
             Scope(sc.fstate, sc.indent + 1) or sc
 
         for i = 1, len - 1 do
-            scope:push(exprs[i]:generate(scope, {
+            exprs[i]:generate(scope, {
                 statement = true
-            }))
+            })
         end
 
         if kwargs.return_val and exprs[len]:is_scoped() then
@@ -422,7 +430,9 @@ local Block_Expr = Expr:clone {
             if sc:is_a(Function_State) or kwargs.return_val then
                 sc:push(gen_ret(exprs[len]:generate(sc, {})))
             else
-                return exprs[len]:generate(sc, {})
+                return exprs[len]:generate(sc, {
+                    statement = kwargs.statement
+                })
             end
         elseif kwargs.statement then
             scope:push(exprs[len]:generate(scope, {
@@ -565,7 +575,7 @@ Binary_Expr = Expr:clone {
 local Unary_Expr = Expr:clone {
     name = "Unary_Expr",
 
-    __init = function(self, op, lhs)
+    __init = function(self, op, rhs)
         self.op, self.rhs = op, rhs
     end,
 
@@ -789,12 +799,55 @@ local While_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local bsc = Scope(sc.fstate, sc.indent + 1)
 
+        local lbl = unique_sym("lbl")
+        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        bsc:push(gen_label(lbeg))
+
+        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        local cexpr = Unary_Expr("not", self.cond)
+        tsc:push(gen_goto(lend))
+        bsc:push(gen_if(cexpr:generate(bsc, {}), tsc))
         self.body:generate(bsc, {
             statement = true,
             no_scope  = true
         })
+        bsc:push(gen_goto(lbeg))
+        bsc:push(gen_label(lend))
 
-        sc:push(gen_while(self.cond:generate(sc, {}), bsc))
+        sc:push(gen_block(bsc))
+    end,
+
+    is_scoped = function(self)
+        return true
+    end,
+
+    to_lua = function(self, i)
+        return ("While_Expr(%s, %s)"):format(
+            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
+    end
+}
+
+local Do_While_Expr = Expr:clone {
+    name = "Do_While_Expr",
+
+    __init = function(self, cond, body)
+        self.cond, self.body = cond, body
+    end,
+
+    generate = function(self, sc, kwargs)
+        local bsc = Scope(sc.fstate, sc.indent + 1)
+
+        local lbl = unique_sym("lbl")
+        bsc:push(gen_label(lbl))
+        self.body:generate(bsc, {
+            statement = true,
+            no_scope  = true
+        })
+        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        tsc:push(gen_goto(lbl))
+        bsc:push(gen_if(self.cond:generate(bsc, {}), tsc))
+
+        sc:push(gen_block(bsc))
     end,
 
     is_scoped = function(self)
@@ -1181,6 +1234,22 @@ local parse_while = function(ls)
     return While_Expr(cond, body)
 end
 
+local parse_dowhile = function(ls)
+    ls:get()
+    local body
+    local tok = ls.token
+    if tok.name == "{" then
+        body = parse_block(ls)
+    else
+        assert_tok(ls, "->")
+        ls:get()
+        body = parse_expr(ls)
+    end
+    assert_tok(ls, "while")
+    ls:get()
+    return Do_While_Expr(parse_expr(ls), body)
+end
+
 local parse_return = function(ls)
     ls:get()
     if ls.token.name == "(" then
@@ -1241,6 +1310,8 @@ parse_expr = function(ls)
         return parse_if(ls)
     elseif name == "while" then
         return parse_while(ls)
+    elseif name == "do" then
+        return parse_dowhile(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "yield" then

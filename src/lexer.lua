@@ -69,7 +69,7 @@ end
 local read_number = function(ls, token)
     local buf = { ls.current }
     next_char(ls)
-    while is_alnum(ls.current) or ls.current == "." do
+    while ls.current and (is_alnum(ls.current) or ls.current == ".") do
         save_and_next_char(ls, buf)
     end
 
@@ -433,7 +433,8 @@ local lex = function(ls, token)
                 local buf = { curr }
                 next_char(ls)
 
-                while is_ident(ls.current) or is_keyword(ls.current) do
+                while ls.current and
+                    (is_ident(ls.current) or is_keyword(ls.current)) do
                     save_and_next_char(ls, buf)
                 end
 
