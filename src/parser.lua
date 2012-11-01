@@ -65,6 +65,12 @@ local assert_tok = function(ls, tok, allow)
     end
 end
 
+local assert_check = function(ls, cond, msg)
+    if not cond then
+        syntax_error(ls, msg)
+    end
+end
+
 local concat = table.concat
 
 local Scope = util.Object:clone {
@@ -1210,28 +1216,43 @@ end
 local parse_function = function(ls)
     ls:get()
     local ids, defs = parse_arglist(ls)
+    local fs = ls.fstate
+    local prev = fs.vararg
+    fs.vararg = ids[#ids] == "..." and true or false
 
     if ls.token.name == "{" then
-        return Function_Expr(ids, defs, parse_block(ls))
+        local ret = Function_Expr(ids, defs, parse_block(ls))
+        fs.vararg = prev
+        return ret
     end
 
     assert_tok(ls, "->")
     ls:get()
 
-    return Function_Expr(ids, defs, parse_expr(ls))
+    local ret = Function_Expr(ids, defs, parse_expr(ls))
+    fs.vararg = prev
+    return ret
 end
 
 local parse_sequence = function(ls)
     ls:get()
 
+    local fs = ls.fstate
+    local prev = fs.vararg
+    fs.vararg = false
+
     if ls.token.name == "{" then
-        return Seq_Expr(parse_block(ls))
+        local ret = Seq_Expr(parse_block(ls))
+        fs.vararg = prev
+        return ret
     end
 
     assert_tok(ls, "->")
     ls:get()
 
-    return Seq_Expr(parse_expr(ls))
+    local ret = Seq_Expr(parse_expr(ls))
+    fs.vararg = prev
+    return ret
 end
 
 local parse_quote = function(ls)
@@ -1406,6 +1427,8 @@ parse_expr = function(ls)
         ls:get()
         return Value_Expr(ls.line_number)
     elseif name == "..." then
+        assert_check(ls, ls.fstate.vararg,
+            "cannot use '...' outside a vararg function")
         ls:get()
         return Vararg_Expr()
     else
