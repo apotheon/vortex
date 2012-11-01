@@ -90,6 +90,9 @@ local Scope = util.Object:clone {
 }
 
 local Function_State = Scope:clone {
+    __init = function(self, indent)
+        Scope.__init(self, self, indent)
+    end
 }
 
 local gen_local = function(names, vals, ltype)
@@ -384,7 +387,11 @@ local Yield_Expr = Expr:clone {
                 exps[#exps + 1] = sym
             end
         end
-        return gen_call(cy, gen_seq(exps))
+        if kwargs.statement then
+            sc:push(gen_call(cy, gen_seq(exps)))
+        else
+            return gen_call(cy, gen_seq(exps))
+        end
     end,
 
     to_lua = function(self, i)
@@ -649,7 +656,7 @@ local Function_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local fs = Function_State(sc.fstate, sc.indent + 1)
+        local fs = Function_State(sc.indent + 1)
 
         local args,  defs  = self.params, self.defaults
         local nargs, ndefs = #args, #defs
@@ -921,7 +928,7 @@ local Seq_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
 
-        local fs = Function_State(sc.fstate, sc.indent + 1)
+        local fs = Scope(sc.fstate, sc.indent + 1)
         local body = self.expr
         if body:is_a(Block_Expr) then
             body:generate(fs, {
@@ -1119,6 +1126,7 @@ local parse_arglist = function(ls)
     end
 
     if tn == "..." then
+        ls:get()
         return { "..." }, {}
     end
 
