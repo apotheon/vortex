@@ -667,9 +667,12 @@ local Function_Expr = Expr:clone {
         end
 
         if ndefs > 0 then
-            local nd = unique_sym("#")
             local sl = get_rt_fun("select")
-            fs:push(gen_local(nd, gen_call(sl, gen_seq({ "'#'", "..." }))))
+            local nd
+            if defs[ndefs] ~= "..." then
+                nd = unique_sym("#")
+                fs:push(gen_local(nd, gen_call(sl, gen_seq({ "'#'", "..." }))))
+            end
 
             for i = 1, ndefs do
                 local name = args[pargs + i]
