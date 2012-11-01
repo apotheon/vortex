@@ -29,6 +29,67 @@ body {
     text-align: center;
 }
 
+#repl {
+    position: fixed;
+    top: 1.5em;
+    left: 15em;
+    right: 2.5em;
+    bottom: 1.5em;
+    border: 0;
+    min-width: 800px;
+    min-height: 400px;
+    opacity: 0.9;
+    background-color: #111111;
+    -moz-box-shadow:    0 0 10px 10px #111111;
+    -webkit-box-shadow: 0 0 10px 10px #111111;
+    box-shadow:         0 0 10px 10px #111111;
+}
+
+#repl_input_div {
+    width: 50%;
+    height: 80%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background-color: transparent;
+}
+
+#repl_output_div {
+    width: 50%;
+    height: 80%;
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: transparent;
+}
+
+#repl_edit {
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    color: #EEEEEE;
+    font-family: monospace;
+    font-size: 10pt;
+    margin: 0;
+    border: 0;
+}
+
+#repl_out {
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    color: #EEEEEE;
+    font-family: monospace;
+    font-size: 10pt;
+    margin: 0;
+    white-space: pre-wrap;       /* css-3 */
+    white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+    white-space: -pre-wrap;      /* Opera 4-6 */
+    white-space: -o-pre-wrap;    /* Opera 7 */
+    word-wrap: break-word;       /* Internet Explorer 5.5+ */
+}
+
 .box {
     text-align: left;
     padding-left: 2em;
@@ -84,13 +145,22 @@ body {
     font-weight: bold;
     color: #EEEEEE;
 }
-#menu a:hover, #nav a:active {
+#menu a:hover, #menu a:active {
     text-decoration: none;
     color: #006699;
 }
 #menu span.arrow {
     color: #EEEEEE;
     padding: 0 1em;
+}
+.fakebtn {
+    font-weight: bold;
+    color: #EEEEEE;
+    cursor: pointer;
+}
+.fakebtn:hover {
+    color: #006699;
+    cursor: pointer;
 }
 
 #footer {
