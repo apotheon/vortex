@@ -915,6 +915,67 @@ local For_Expr = Expr:clone {
     end
 }
 
+local For_Range_Expr = Expr:clone {
+    name = "For_Range_Expr",
+
+    __init = function(self, ident, first, last, step, body)
+        self.ident, self.first, self.last, self.step, self.body
+            = ident, first, last, step, body
+    end,
+
+    generate = function(self, sc, kwargs)
+        local bsc = Scope(sc.fstate, sc.indent + 1)
+        local tonum = get_rt_fun("tonum")
+
+        local varsym, limsym, stepsym
+            = unique_sym("var"), unique_sym("lim"), unique_sym("step")
+
+        local lbl = unique_sym("lbl")
+        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+
+        local ex1, ex2, ex3 = self.first:generate(bsc, {}),
+            self.last:generate(bsc, {}), self.step:generate(bsc, {})
+
+        bsc:push(gen_local(gen_seq({ varsym, limsym, stepsym }),
+            gen_seq({ gen_call(tonum, ex1),
+                      gen_call(tonum, ex2),
+                      gen_call(tonum, ex3) })))
+        -- push errors here
+
+        bsc:push(gen_label(lbeg))
+
+        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        tsc:push(gen_goto(lend))
+        bsc:push(gen_if(gen_unexpr("not", gen_binexpr("or",
+            gen_binexpr("and",
+                gen_binexpr(">", stepsym, "0"),
+                gen_binexpr("<=", varsym, limsym)),
+            gen_binexpr("and",
+                gen_binexpr("<=", stepsym, "0"),
+                gen_binexpr(">=", varsym, limsym)
+            ))), tsc))
+        bsc:push(gen_local(self.ident, varsym))
+        self.body:generate(bsc, {
+            statement = true,
+            no_scope  = true
+        })
+        bsc:push(gen_ass(varsym, gen_binexpr("+", varsym, stepsym)))
+        bsc:push(gen_goto(lbeg))
+        bsc:push(gen_label(lend))
+
+        sc:push(gen_block(bsc))
+    end,
+
+    is_scoped = function(self)
+        return true
+    end,
+
+    to_lua = function(self, i)
+        return ("While_Expr(%s, %s)"):format(
+            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
+    end
+}
+
 local Seq_Expr = Expr:clone {
     name = "Seq_Expr",
 
@@ -1331,12 +1392,33 @@ end
 
 local parse_for = function(ls)
     ls:get()
-    local body
-    local tok = ls.token
-    local ids = parse_identlist(ls)
-    assert_tok(ls, "in")
-    ls:get()
-    local exprs = parse_exprlist(ls)
+    local tok, ident, body, ids, exprs, first, last, step = ls.token
+    assert_tok(ls, "<ident>")
+
+    -- for range
+    local range = (ls:lookahead() == "=")
+    if range then
+        ident = tok.value
+        ls:get() ls:get()
+
+        first = parse_expr(ls)
+        assert_tok(ls, ",")
+        ls:get()
+
+        last = parse_expr(ls)
+        if tok.name == "," then
+            ls:get()
+            step = parse_expr(ls)
+        else
+            step = Value_Expr(1)
+        end
+    else
+        ids = parse_identlist(ls)
+        assert_tok(ls, "in")
+        ls:get()
+        exprs = parse_exprlist(ls)
+    end
+
     if tok.name == "{" then
         body = parse_block(ls)
     else
@@ -1344,7 +1426,12 @@ local parse_for = function(ls)
         ls:get()
         body = parse_expr(ls)
     end
-    return For_Expr(ids, exprs, body)
+
+    if range then
+        return For_Range_Expr(ident, first, last, step, body)
+    else
+        return For_Expr(ids, exprs, body)
+    end
 end
 
 local parse_return = function(ls)
