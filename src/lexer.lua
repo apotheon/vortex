@@ -496,9 +496,6 @@ return {
                 name    = nil,
                 value   = nil 
             },
-            fstate = {
-                vararg = false
-            },
             source      = fname,    -- the source (a filename or stdin or w/e)
             current     = reader(), -- the current character (from reader)
             line_number = 1,        -- the current line number

@@ -323,6 +323,34 @@ end
 local io_stderr = io.stderr
 local io_write  = io.write
 
+local Stack = Object:clone {
+    __len_fn = function(self)
+        return self.length
+    end,
+
+    __init = function(self)
+        self.length, self.__len  = 0, self.__len_fn
+    end,
+
+    push = function(self, item)
+        self.length = self.length + 1
+        self[self.length] = item
+        return item
+    end,
+
+    pop = function(self)
+        local len = self.length
+        local it  = self[len]
+        self[len] = nil
+        self.length = len - 1
+        return it
+    end,
+
+    top = function(self)
+        return self[self.length]
+    end
+}
+
 return {
     file_istream  = ifstream,
     file_ostream  = ofstream,
@@ -360,6 +388,7 @@ return {
     end,
 
     Object = Object,
+    Stack  = Stack,
 
     is_array = is_array,
     serialize = serialize,
