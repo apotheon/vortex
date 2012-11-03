@@ -10,8 +10,6 @@
  Available under the terms of the MIT license.
 ]]
 
-local stderr, exit = _G.io.stderr, _G.os.exit
-
 local M = {
     -- core
     __vx_assert   = _G.assert,
@@ -38,16 +36,6 @@ local M = {
     __vx_type     = _G.type,
     __vx_luaver   = _G._VERSION,
     __vx_lua_g    = _G,
-
-    __vx_err_fatal = function(msg)
-        stderr:write(msg, "\n")
-        exit(1)
-    end,
-
-    __vx_err_runtime = function(msg, source, linenum)
-        stderr:write(source, ":", linenum, ": ", msg, "\n")
-        exit(1)
-    end,
 
     -- coroutines
     __vx_coro_create  = _G.coroutine.create,

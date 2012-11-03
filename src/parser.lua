@@ -951,7 +951,7 @@ local For_Range_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local bsc = Scope(sc.fstate, sc.indent + 1)
         local tonum = get_rt_fun("tonum")
-        local rterr = get_rt_fun("err_runtime")
+        local rterr = get_rt_fun("error")
 
         local varsym, limsym, stepsym
             = unique_sym("var"), unique_sym("lim"), unique_sym("step")
@@ -972,15 +972,10 @@ local For_Range_Expr = Expr:clone {
 
         local di = self.dinfo
         local src, linenum = di.source, di.first_line
-        ivs:push(gen_call(rterr,
-            gen_seq({ '"'.."'for' initial value must be a number"..'"',
-                '"'..src..'"', linenum })))
-        lms:push(gen_call(rterr,
-            gen_seq({ '"'.."'for' limit must be a number"..'"',
-                '"'..src..'"', linenum })))
-        sts:push(gen_call(rterr,
-            gen_seq({ '"'.."'for' step must be a number"..'"',
-                '"'..src..'"', linenum })))
+        ivs:push(gen_call(rterr, '"'.."'for' initial value must be a number"
+            ..'"'))
+        lms:push(gen_call(rterr, '"'.."'for' limit must be a number"..'"'))
+        sts:push(gen_call(rterr, '"'.."'for' step must be a number"..'"'))
 
         bsc:push(gen_if(gen_binexpr("==", varsym,  "nil"), ivs))
         bsc:push(gen_if(gen_binexpr("==", limsym,  "nil"), lms))
