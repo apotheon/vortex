@@ -850,7 +850,6 @@ local Variable_Pattern = Expr:clone {
             ts:push(gen_goto(kwargs.next_arm))
             sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
         end
-        return "true"
     end
 }
 
@@ -869,7 +868,6 @@ local Wildcard_Pattern = Expr:clone {
             ts:push(gen_goto(kwargs.next_arm))
             sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
         end
-        return "true"
     end
 }
 
@@ -913,20 +911,22 @@ local Match_Expr = Expr:clone {
             local asc = Scope(sc.fstate, sc.indent + 1)
             sc:push(gen_label(armlb))
             armlb = (i ~= narms) and unique_sym("lbl") or elb
+            local n = 1
             for i = 1, #pl do
-                ptrns[i] = pl[i]:generate(asc, {
+                local v = pl[i]:generate(asc, {
                     next_arm = armlb,
                     expr = exps[i] or "nil"
                 })
+                if v then
+                    ptrns[n] = v
+                    n = n + 1
+                end
             end
 
-            -- by doing this kind of checking, we can eliminate useless
-            -- conditionals at compile time.
             local cond
-            for i = 1, #ptrns do
+            for i = 1, n - 1 do
                 local c = ptrns[i]
                 cond = cond and gen_binexpr("and", cond, c) or c
-                if cond == "true" then cond = nil end
             end
 
             if cond then
