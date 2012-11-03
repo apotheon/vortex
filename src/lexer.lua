@@ -25,7 +25,8 @@ local keywords = {
     ["goto" ] = true, ["if"   ] = true, ["in"   ] = true, ["let"   ] = true,
     ["match"] = true, ["mod"  ] = true, ["nil"  ] = true, ["not"   ] = true,
     ["or"   ] = true, ["quote"] = true, ["rec"  ] = true, ["return"] = true,
-    ["seq"  ] = true, ["true" ] = true, ["while"] = true, ["yield" ] = true,
+    ["seq"  ] = true, ["true" ] = true, ["when" ] = true, ["while" ] = true,
+    ["yield"] = true,
 
     ["__FILE__"] = true, ["__LINE__"] = true
 }

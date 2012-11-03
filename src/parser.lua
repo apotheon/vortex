@@ -6,9 +6,9 @@ local Binary_Ops = {
     -- all the assignment operators have the same, lowest precedence
     ["="  ] = { 2,  1  }, ["+=" ] = { 2,  1  }, ["-=" ] = { 2,  1  },
     ["*=" ] = { 2,  1  }, ["/=" ] = { 2,  1  }, ["%=" ] = { 2,  1  },
-    ["^=" ] = { 2,  1  }, ["&=" ] = { 2,  1  }, ["|=" ] = { 2,  1  },
-    ["<<="] = { 2,  1  }, [">>="] = { 2,  1  }, ["++="] = { 2,  1  },
-    ["**="] = { 2,  1  },
+    --["^=" ] = { 2,  1  }, ["&=" ] = { 2,  1  }, ["|=" ] = { 2,  1  },
+    --["<<="] = { 2,  1  }, [">>="] = { 2,  1  },
+    ["++="] = { 2,  1  }, ["**="] = { 2,  1  },
 
     -- followed by logical operators or, and
     ["or" ] = { 3,  3  }, ["and"] = { 4,  4  },
@@ -24,8 +24,8 @@ local Binary_Ops = {
     [".." ] = { 8,  7  },
 
     -- bitwise ops
-    ["|"  ] = { 9,  9  }, ["^"  ] = { 10, 10 }, ["&"  ] = { 11, 11 },
-    [">>" ] = { 12, 12 }, ["<<" ] = { 12, 12 },
+    --["|"  ] = { 9,  9  }, ["^"  ] = { 10, 10 }, ["&"  ] = { 11, 11 },
+    --[">>" ] = { 12, 12 }, ["<<" ] = { 12, 12 },
 
     -- arithmetic ops
     ["+"  ] = { 13, 13 }, ["-"  ] = { 13, 13 }, ["*"  ] = { 14, 14 },
@@ -59,11 +59,12 @@ local Stack = util.Stack
 
 local get_rt_fun
 
-local assert_tok = function(ls, tok, allow)
+local assert_tok = function(ls, ...)
     local n = ls.token.name
-    if n ~= tok and (allow == nil or n ~= allow) then
-        syntax_error(ls, "unexpected symbol")
+    for i = 1, select("#", ...) do
+        if select(i, ...) == n then return nil end
     end
+    syntax_error(ls, "unexpected symbol")
 end
 
 local assert_check = function(ls, cond, msg)
@@ -814,6 +815,156 @@ local If_Expr = Expr:clone {
     end
 }
 
+local Expr_Pattern = Expr:clone {
+    name = "Expr_Pattern",
+
+    __init = function(self, ps, expr, cond)
+        Expr.__init(self, ps)
+        self.expr, self.cond = expr, cond
+    end,
+
+    generate = function(self, sc, kwargs)
+        local expr, cond = self.expr, self.cond
+        if cond then
+            local ts = Scope(sc.fstate, sc.indent + 1)
+            ts:push(gen_goto(kwargs.next_arm))
+            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
+        end
+        return gen_binexpr("==", expr:generate(sc, {}), kwargs.expr)
+    end
+}
+
+local Variable_Pattern = Expr:clone {
+    name = "Variable_Pattern",
+
+    __init = function(self, ps, var, cond)
+        Expr.__init(self, ps)
+        self.var, self.cond = var, cond
+    end,
+
+    generate = function(self, sc, kwargs)
+        local var, cond = self.var, self.cond
+        sc:push(gen_local(var, kwargs.expr))
+        if cond then
+            local ts = Scope(sc.fstate, sc.indent + 1)
+            ts:push(gen_goto(kwargs.next_arm))
+            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
+        end
+        return "true"
+    end
+}
+
+local Wildcard_Pattern = Expr:clone {
+    name = "Wildcard_Pattern",
+
+    __init = function(self, ps, cond)
+        Expr.__init(self, ps)
+        self.cond = cond
+    end,
+
+    generate = function(self, sc, kwargs)
+        local cond = self.cond
+        if cond then
+            local ts = Scope(sc.fstate, sc.indent + 1)
+            ts:push(gen_goto(kwargs.next_arm))
+            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
+        end
+        return "true"
+    end
+}
+
+local Match_Expr = Expr:clone {
+    name = "Match_Expr",
+
+    __init = function(self, ps, exprlist, body)
+        Expr.__init(self, ps)
+        self.exprlist, self.body = exprlist, body
+    end,
+
+    generate = function(self, sc, kwargs)
+        local stat, rval = kwargs.statement, kwargs.return_val
+
+        local el = self.exprlist
+        local exps = {}
+        for i = 1, #el do
+            local ex = el[i]
+            if ex:is_a(Value_Expr) then
+                exps[i] = ex:generate(sc, {})
+            else
+                local s = unique_sym("expr")
+                sc:push(gen_local(s, ex:generate(sc, {})))
+                exps[i] = s
+            end
+        end
+
+        local msym
+        if not stat and not rval then
+            msym = unique_sym("match")
+            sc:push(gen_local(msym))
+        end
+
+        local al = self.body
+        local narms, armlb, elb = #al, unique_sym("lbl"), unique_sym("lbl")
+        for i = 1, narms do
+            local arm = al[i]
+            local pl, bd = arm[1], arm[2]
+            local ptrns = {}
+
+            local asc = Scope(sc.fstate, sc.indent + 1)
+            sc:push(gen_label(armlb))
+            armlb = (i ~= narms) and unique_sym("lbl") or elb
+            for i = 1, #pl do
+                ptrns[i] = pl[i]:generate(asc, {
+                    next_arm = armlb,
+                    expr = exps[i] or "nil"
+                })
+            end
+
+            -- by doing this kind of checking, we can eliminate useless
+            -- conditionals at compile time.
+            local cond
+            for i = 1, #ptrns do
+                local c = ptrns[i]
+                cond = cond and gen_binexpr("and", cond, c) or c
+                if cond == "true" then cond = nil end
+            end
+
+            if cond then
+                local csc = Scope(asc.fstate, asc.indent + 1)
+                csc:push(gen_goto(armlb))
+                asc:push(gen_if(gen_unexpr("not", cond), csc))
+            end
+
+            local aval = bd:generate(asc, {
+                no_scope = true,
+                statement = stat,
+                return_val = rval
+            })
+
+            if stat or rval then
+                asc:push((rval and not bd:is_scoped())
+                    and gen_ret(aval) or aval)
+            else
+                asc:push(gen_ass(msym, aval))
+            end
+            sc:push(gen_block(asc))
+            sc:push(gen_goto(elb))
+        end
+        sc:push(gen_label(elb))
+        return msym
+    end,
+
+    is_scoped = function(self)
+        return true
+    end,
+
+    to_lua = function(self, i)
+        return ("If_Expr(%s, %s, %s)"):format(
+            self.cond:to_lua(i + 1), self.tval:to_lua(i + 1),
+            self.fval:to_lua(i + 1))
+    end
+}
+
 local While_Expr = Expr:clone {
     name = "While_Expr",
 
@@ -1339,18 +1490,74 @@ local parse_table = function(ls)
     return Table_Expr(ls, tbl)
 end
 
-local parse_function = function(ls)
+local parse_match = function(ls)
     ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
+    local el  = parse_exprlist(ls)
+    local tok = ls.token
+
+    local inb = false
+    if tok.name == "{" then
+        ls:get()
+        inb = true
+    else
+        assert_tok(ls, "->")
+        ls:get()
+    end
+
+    local body = parse_match_body(ls)
+    if inb then
+        assert_tok(ls, "}")
+        ls:get()
+    end
+
+    return Match_Expr(ls, el, body)
+end
+
+local parse_match_body
+
+local parse_function = function(ls)
+    local ln, tok = ls.line_number, ls.token
+    ls.ndstack:push({ first_line = ln })
+    ls:get()
+
     local ids, defs = parse_arglist(ls)
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
 
-    if ls.token.name == "{" then
-        return Function_Expr(ls, ids, defs, parse_block(ls))
+    if tok.name == "{" then
+        local lah, body = ls:lookahead()
+        if lah == "|" or lah == "case" then
+            ls.ndstack:push({ first_line = ln })
+            local el = {}
+            for i = 1, #ids do
+                local n = ids[i]
+                if n == "..." then break end
+                el[i] = Symbol_Expr(nil, n)
+            end
+            body = Match_Expr(ls, el, parse_match_body(ls))
+            assert_tok(ls, "}")
+            ls:get()
+        else
+            body = parse_block(ls)
+        end
+        return Function_Expr(ls, ids, defs, body)
     end
 
     assert_tok(ls, "->")
     ls:get()
+
+    local n = tok.name
+    if n == "|" or n == "case" then
+        ls.ndstack:push({ first_line = ln })
+        local el = {}
+        for i = 1, #ids do
+            local n = ids[i]
+            if n == "..." then break end
+            el[i] = Symbol_Expr(nil, n)
+        end
+        return Function_Expr(ls, ids, defs,
+            Match_Expr(ls, el, parse_match_body(ls)))
+    end
 
     return Function_Expr(ls, ids, defs, parse_expr(ls))
 end
@@ -1412,6 +1619,85 @@ local parse_if = function(ls)
     end
 
     return If_Expr(ls, cond, tval, nil)
+end
+
+local parse_when = function(ls)
+    if ls.token.name == "when" then
+        ls:get()
+        return parse_expr(ls)
+    end
+end
+
+local parse_pattern = function(ls)
+    ls.ndstack:push({ first_line = ls.line_number })
+    local tok = ls.token
+    local tn  = tok.name
+    if tn == "$" or tn == "<string>" or tn == "<number>"
+    or tn == "true" or tn == "false" or tn == "nil" then
+        return Expr_Pattern(ls, parse_expr(ls), parse_when(ls))
+    elseif tn == "<ident>" then
+        local v = tok.value
+        ls:get()
+        if v == "_" then
+            return Wildcard_Pattern(ls, parse_when(ls))
+        else
+            return Variable_Pattern(ls, v, parse_when(ls))
+        end
+    else
+        print(tn, tok.value, string.byte(tn))
+        syntax_error(ls, "pattern expected")
+    end
+end
+
+local parse_pattern_list = function(ls)
+    local tok, ptrns = ls.token, {}
+    repeat
+        ptrns[#ptrns + 1] = parse_pattern(ls)
+    until tok.name ~= "," or not ls:get()
+    return ptrns
+end
+
+parse_match_body = function(ls)
+    local ret = {}
+    local tok = ls.token
+    assert_tok(ls, "|", "case")
+    repeat
+        ls:get()
+        local pl, body = parse_pattern_list(ls)
+        if tok.name == "{" then
+            body = parse_block(ls)
+        else
+            assert_tok(ls, "->")
+            ls:get()
+            body = parse_expr(ls)
+        end
+        ret[#ret + 1] = { pl, body }
+    until tok.name ~= "|" and tok.name ~= "case"
+    return ret
+end
+
+local parse_match = function(ls)
+    ls.ndstack:push({ first_line = ls.line_number })
+    ls:get()
+    local el  = parse_exprlist(ls)
+    local tok = ls.token
+
+    local inb = false
+    if tok.name == "{" then
+        ls:get()
+        inb = true
+    else
+        assert_tok(ls, "->")
+        ls:get()
+    end
+
+    local body = parse_match_body(ls)
+    if inb then
+        assert_tok(ls, "}")
+        ls:get()
+    end
+
+    return Match_Expr(ls, el, body)
 end
 
 local parse_while = function(ls)
@@ -1555,6 +1841,8 @@ parse_expr = function(ls)
         return parse_quote(ls)
     elseif name == "if" then
         return parse_if(ls)
+    elseif name == "match" then
+        return parse_match(ls)
     elseif name == "while" then
         return parse_while(ls)
     elseif name == "do" then
