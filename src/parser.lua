@@ -1140,7 +1140,8 @@ end
 
 local parse_subexpr = function(ls)
     local tok = ls.token.name
-    if tok == "(" then
+    if tok == "(" or tok == "$" then
+        if tok == "$" then ls:get() end
         ls:get()
         local v = parse_expr(ls)
         if ls.token.name ~= ")" then syntax_error(ls, "missing ')'") end
@@ -1574,6 +1575,14 @@ parse_expr = function(ls)
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Vararg_Expr(ls)
+    elseif name == "$" then
+        ls:get()
+        assert_tok(ls, "(")
+        ls:get()
+        local ret = parse_expr(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        return ret
     else
         return parse_binexpr(ls)
     end
