@@ -1309,11 +1309,19 @@ local parse_table = function(ls)
     local tok = ls.token
     local idx = 1
     repeat
-        -- TODO: handle for expression keys
         if tok.name == "<ident>" and ls:lookahead() == "=" then
             local name = Value_Expr(nil, '"' .. tok.value .. '"')
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
+        elseif tok.name == "$" then
+            local expr = parse_expr(ls)
+            if tok.name == "=" then
+                ls:get()
+                tbl[#tbl + 1] = { expr, parse_expr(ls) }
+            else
+                tbl[#tbl + 1] = { idx, expr }
+                idx = idx + 1
+            end
         else
             tbl[#tbl + 1] = { idx, parse_expr(ls) }
             idx = idx + 1
