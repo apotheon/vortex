@@ -215,7 +215,7 @@ local Expr = util.Object:clone {
     __init = function(self, ps)
         if not ps then return nil end
         local dinfo = ps.ndstack:pop()
-        dinfo.last_line = ps.line_number
+        dinfo.last_line, dinfo.source = ps.line_number, ps.source
         self.dinfo = dinfo
     end,
 
@@ -951,6 +951,7 @@ local For_Range_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local bsc = Scope(sc.fstate, sc.indent + 1)
         local tonum = get_rt_fun("tonum")
+        local rterr = get_rt_fun("err_runtime")
 
         local varsym, limsym, stepsym
             = unique_sym("var"), unique_sym("lim"), unique_sym("step")
@@ -965,7 +966,25 @@ local For_Range_Expr = Expr:clone {
             gen_seq({ gen_call(tonum, ex1),
                       gen_call(tonum, ex2),
                       gen_call(tonum, ex3) })))
-        -- push errors here
+
+        local ivs, lms, sts = Scope(sc.fstate, bsc.indent + 1),
+            Scope(sc.fstate, bsc.indent + 1), Scope(sc.fstate, bsc.indent + 1)
+
+        local di = self.dinfo
+        local src, linenum = di.source, di.first_line
+        ivs:push(gen_call(rterr,
+            gen_seq({ '"'.."'for' initial value must be a number"..'"',
+                '"'..src..'"', linenum })))
+        lms:push(gen_call(rterr,
+            gen_seq({ '"'.."'for' limit must be a number"..'"',
+                '"'..src..'"', linenum })))
+        sts:push(gen_call(rterr,
+            gen_seq({ '"'.."'for' step must be a number"..'"',
+                '"'..src..'"', linenum })))
+
+        bsc:push(gen_if(gen_binexpr("==", varsym,  "nil"), ivs))
+        bsc:push(gen_if(gen_binexpr("==", limsym,  "nil"), lms))
+        bsc:push(gen_if(gen_binexpr("==", stepsym, "nil"), sts))
 
         bsc:push(gen_label(lbeg))
 
@@ -1107,7 +1126,7 @@ local parse_exprlist
 local parse_prefixexpr = function(ls)
     local tok = ls.token.name
     if tok == "<ident>" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         local v = ls.token.value
         ls:get()
         -- XXX: temporary
@@ -1135,23 +1154,23 @@ local parse_subexpr = function(ls)
     elseif not tok or Binary_Ops[tok] then
         syntax_error(ls, "unexpected symbol")
     elseif Unary_Ops[tok] then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
     elseif tok == "<number>" or tok == "<string>" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         local v = ls.token.value
         ls:get()
         return Value_Expr(ls, v)
     elseif tok == "nil" or tok == "true" or tok == "false" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Value_Expr(ls, tok)
     -- handle calls here; we parse prefix expressions, which can always
     -- be called when it comes to syntax (semantically that's a different
     -- case)
     else
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         local v = parse_prefixexpr(ls)
         if ls.token.name == "(" then
             ls:get()
@@ -1172,7 +1191,7 @@ end
 parse_binexpr = function(ls, mp)
     local curr = ls.ndstack
     local len = #curr
-    curr:push({ first_line = ls.current_line })
+    curr:push({ first_line = ls.line_number })
     mp = mp or 1
     local lhs = parse_subexpr(ls)
     while true do
@@ -1191,7 +1210,7 @@ parse_binexpr = function(ls, mp)
         local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
 
         lhs = Binary_Expr(ls, op, lhs, rhs)
-        curr:push({ first_line = ls.current_line })
+        curr:push({ first_line = ls.line_number })
     end
     local nlen = #curr
     for i = 1, nlen - len do curr:pop() end
@@ -1263,7 +1282,7 @@ local parse_arglist = function(ls)
 end
 
 local parse_block = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local tok, exprs = ls.token, {}
 
@@ -1282,7 +1301,7 @@ local parse_block = function(ls)
 end
 
 local parse_table = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local tok, tbl = ls.token, {}
 
@@ -1317,7 +1336,7 @@ local parse_table = function(ls)
 end
 
 local parse_function = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local ids, defs = parse_arglist(ls)
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
@@ -1333,7 +1352,7 @@ local parse_function = function(ls)
 end
 
 local parse_sequence = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     ls.fnstack:push({ vararg = false })
 
@@ -1348,7 +1367,7 @@ local parse_sequence = function(ls)
 end
 
 local parse_quote = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
 
     if ls.token.name == "{" then
@@ -1362,7 +1381,7 @@ local parse_quote = function(ls)
 end
 
 local parse_if = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local cond = parse_expr(ls)
     local tok  = ls.token
@@ -1392,7 +1411,7 @@ local parse_if = function(ls)
 end
 
 local parse_while = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local cond = parse_expr(ls)
     local tok  = ls.token
@@ -1410,7 +1429,7 @@ local parse_while = function(ls)
 end
 
 local parse_dowhile = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local body
     local tok = ls.token
@@ -1427,7 +1446,7 @@ local parse_dowhile = function(ls)
 end
 
 local parse_for = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local tok, ident, body, ids, exprs, first, last, step = ls.token
     assert_tok(ls, "<ident>")
@@ -1472,7 +1491,7 @@ local parse_for = function(ls)
 end
 
 local parse_return = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     if ls.token.name == "(" then
         ls:get()
@@ -1485,7 +1504,7 @@ local parse_return = function(ls)
 end
 
 local parse_yield = function(ls)
-    ls.ndstack:push({ first_line = ls.current_line })
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     if ls.token.name == "(" then
         ls:get()
@@ -1505,7 +1524,7 @@ parse_expr = function(ls)
     if name == "fn" then
         return parse_function(ls)
     elseif name == "let" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
 
         local ltype
@@ -1547,17 +1566,17 @@ parse_expr = function(ls)
     elseif name == "[" then
         return parse_table(ls)
     elseif name == "__FILE__" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Value_Expr(ls, '"' .. ls.source .. '"')
     elseif name == "__LINE__" then
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Value_Expr(ls, ls.line_number)
     elseif name == "..." then
         assert_check(ls, ls.fnstack:top().vararg,
             "cannot use '...' outside a vararg function")
-        ls.ndstack:push({ first_line = ls.current_line })
+        ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Vararg_Expr(ls)
     else

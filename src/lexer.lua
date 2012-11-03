@@ -31,7 +31,7 @@ local keywords = {
 }
 
 local lex_error = function(ls, msg, value)
-    msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, ls.line_pos, msg)
+    msg = ("%s:%d: %s"):format(ls.source, ls.line_number, msg)
     if value then
         msg = msg .. " near '" .. value .. "'"
     end
@@ -44,7 +44,6 @@ end
 
 local next_char = function(ls)
     ls.current  = ls.reader()
-    ls.line_pos = ls.line_pos + 1
 end
 local next_line = function(ls)
     local prev = ls.current
@@ -58,7 +57,6 @@ local next_line = function(ls)
     end
 
     ls.line_number = ls.line_number + 1
-    ls.line_pos    = 0
 end
 
 local save_and_next_char = function(ls, buf)
@@ -499,8 +497,7 @@ return {
             source      = fname,    -- the source (a filename or stdin or w/e)
             current     = reader(), -- the current character (from reader)
             line_number = 1,        -- the current line number
-            last_line   = 1,        -- previous line number
-            line_pos    = 0         -- position on the line
+            last_line   = 1         -- previous line number
         }, State_MT)
     end,
 
