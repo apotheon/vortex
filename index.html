@@ -60,11 +60,12 @@
             and many of the features are incomplete/missing/undecided on.</span></p>
             <h3>First, a small taste of the language.</h3>
             <pre class="code">let env = [ a = 1, b = 2, c = 3 ]
-let Add, Mul, Var, Num =
+let (Add, Mul, Var, Num) = (
     fn a, b -> fn env -> a(env) + b(env),
     fn a, b -> fn env -> a(env) * b(env),
     fn a    -> fn env -> env[a],
     fn a    -> fn env -> a
+)
 
 // (a + (2 * b)) * c
 let tree = Mul(Add(Var("a"), Mul(Num(2), Var("b"))), Var("c"))
@@ -135,7 +136,7 @@ let rec fact = fn n, acc = 1 ->
     | _ -> fact(n - 1, n * acc)
 
 // sequences
-let a, b, c = seq -> for k, v in pairs([ 5, 10, 15 ]) -> yield v
+let (a, b, c) = seq -> for k, v in pairs([ 5, 10, 15 ]) -> yield v
 assert(a == 5 and b == 10 and c == 15)
 
 // sequences as list comprehensions
