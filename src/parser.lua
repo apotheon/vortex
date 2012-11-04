@@ -824,13 +824,7 @@ local Expr_Pattern = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local expr, cond = self.expr, self.cond
-        if cond then
-            local ts = Scope(sc.fstate, sc.indent + 1)
-            ts:push(gen_goto(kwargs.next_arm))
-            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
-        end
-        return gen_binexpr("==", expr:generate(sc, {}), kwargs.expr)
+        return gen_binexpr("==", self.expr:generate(sc, {}), kwargs.expr)
     end
 }
 
@@ -843,13 +837,7 @@ local Variable_Pattern = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local var, cond = self.var, self.cond
-        sc:push(gen_local(var, kwargs.expr))
-        if cond then
-            local ts = Scope(sc.fstate, sc.indent + 1)
-            ts:push(gen_goto(kwargs.next_arm))
-            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
-        end
+        sc:push(gen_local(self.var, kwargs.expr))
     end
 }
 
@@ -862,12 +850,33 @@ local Wildcard_Pattern = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local cond = self.cond
-        if cond then
-            local ts = Scope(sc.fstate, sc.indent + 1)
-            ts:push(gen_goto(kwargs.next_arm))
-            sc:push(gen_if(gen_unexpr("not", cond:generate(sc, {})), ts))
+    end
+}
+
+local Table_Pattern = Expr:clone {
+    name = "Table_Pattern",
+
+    __init = function(self, ps, contents, cond)
+        Expr.__init(self, ps)
+        self.contents, self.cond = contents, cond
+    end,
+
+    generate = function(self, sc, kwargs)
+        local tbl, expr = self.contents, kwargs.expr
+        local mn, ret = 0
+        for i = 1, #tbl do
+            local it = tbl[i]
+            local k, v = it[1], it[2]
+            if type(k) == "number" then
+                mn = mn + 1
+            end
+            local el = gen_index(expr, k)
+            local pv = v:generate(sc, { expr = el })
+            ret = ret and gen_binexpr("and", ret, pv) or pv
         end
+        local lc = gen_binexpr("==", gen_unexpr("#", expr), mn)
+        ret = ret and gen_binexpr("and", ret, lc) or lc
+        return ret
     end
 }
 
@@ -913,10 +922,17 @@ local Match_Expr = Expr:clone {
             armlb = (i ~= narms) and unique_sym("lbl") or elb
             local n = 1
             for i = 1, #pl do
-                local v = pl[i]:generate(asc, {
-                    next_arm = armlb,
+                local pt = pl[i]
+                local v = pt:generate(asc, {
                     expr = exps[i] or "nil"
                 })
+                local cond = pt.cond
+                if cond then
+                    local ts = Scope(asc.fstate, asc.indent + 1)
+                    ts:push(gen_goto(armlb))
+                    sc:push(gen_if(gen_unexpr("not", cond:generate(asc, {})),
+                        ts))
+                end
                 if v then
                     ptrns[n] = v
                     n = n + 1
@@ -1628,14 +1644,17 @@ local parse_when = function(ls)
     end
 end
 
+local parse_table_pattern
+
 local parse_pattern = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
     local tok = ls.token
     local tn  = tok.name
     if tn == "$" or tn == "<string>" or tn == "<number>"
     or tn == "true" or tn == "false" or tn == "nil" then
+        ls.ndstack:push({ first_line = ls.line_number })
         return Expr_Pattern(ls, parse_expr(ls), parse_when(ls))
     elseif tn == "<ident>" then
+        ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
         if v == "_" then
@@ -1643,10 +1662,51 @@ local parse_pattern = function(ls)
         else
             return Variable_Pattern(ls, v, parse_when(ls))
         end
+    elseif tn == "[" then
+        return parse_table_pattern(ls)
     else
         print(tn, tok.value, string.byte(tn))
         syntax_error(ls, "pattern expected")
     end
+end
+
+parse_table_pattern = function(ls)
+    ls.ndstack:push({ first_line = ls.line_number })
+    ls:get()
+    local tok, tbl = ls.token, {}
+
+    if tok.name == "]" then
+        ls:get()
+        return Table_Pattern(ls, {}, parse_when(ls))
+    end
+
+    local tok = ls.token
+    local idx = 1
+    repeat
+        if tok.name == "<ident>" and ls:lookahead() == "=" then
+            local name = Value_Expr(nil, '"' .. tok.value .. '"')
+            ls:get() ls:get()
+            tbl[#tbl + 1] = { name, parse_pattern(ls) }
+        elseif tok.name == "$" then
+            local expr = parse_expr(ls)
+            assert_tok(ls, "=")
+            ls:get()
+            tbl[#tbl + 1] = { expr, parse_pattern(ls) }
+        else
+            tbl[#tbl + 1] = { idx, parse_pattern(ls) }
+            idx = idx + 1
+        end
+        if tok.name ~= "," then
+            assert_tok(ls, "]")
+        else
+            ls:get()
+        end
+    until tok.name == "]"
+
+    assert_tok(ls, "]")
+    ls:get()
+
+    return Table_Pattern(ls, tbl, parse_when(ls))
 end
 
 local parse_pattern_list = function(ls)
