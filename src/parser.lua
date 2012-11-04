@@ -827,9 +827,9 @@ local If_Expr = Expr:clone {
 local Expr_Pattern = Expr:clone {
     name = "Expr_Pattern",
 
-    __init = function(self, ps, expr, cond)
+    __init = function(self, ps, expr, cond, as)
         Expr.__init(self, ps)
-        self.expr, self.cond = expr, cond
+        self.expr, self.cond, self.as = expr, cond, as
     end,
 
     generate = function(self, sc, kwargs)
@@ -840,9 +840,9 @@ local Expr_Pattern = Expr:clone {
 local Variable_Pattern = Expr:clone {
     name = "Variable_Pattern",
 
-    __init = function(self, ps, var, cond)
+    __init = function(self, ps, var, cond, as)
         Expr.__init(self, ps)
-        self.var, self.cond = var, cond
+        self.var, self.cond, self.as = var, cond, as
     end,
 
     generate = function(self, sc, kwargs)
@@ -853,9 +853,9 @@ local Variable_Pattern = Expr:clone {
 local Wildcard_Pattern = Expr:clone {
     name = "Wildcard_Pattern",
 
-    __init = function(self, ps, cond)
+    __init = function(self, ps, cond, as)
         Expr.__init(self, ps)
-        self.cond = cond
+        self.cond, self.as = cond, as
     end,
 
     generate = function(self, sc, kwargs)
@@ -865,9 +865,9 @@ local Wildcard_Pattern = Expr:clone {
 local Table_Pattern = Expr:clone {
     name = "Table_Pattern",
 
-    __init = function(self, ps, contents, cond)
+    __init = function(self, ps, contents, cond, as)
         Expr.__init(self, ps)
-        self.contents, self.cond = contents, cond
+        self.contents, self.cond, self.as = contents, cond, as
     end,
 
     generate = function(self, sc, kwargs)
@@ -938,16 +938,20 @@ local Match_Expr = Expr:clone {
             local n = 1
             for i = 1, #pl do
                 local pt = pl[i]
+                local expr = exps[i] or "nil"
                 local v = pt:generate(asc, {
-                    expr = exps[i] or "nil",
-                    next_arm = armlb
+                    expr = expr, next_arm = armlb
                 })
                 local cond = pt.cond
                 if cond then
                     local ts = Scope(asc.fstate, asc.indent + 1)
                     ts:push(gen_goto(armlb))
-                    sc:push(gen_if(gen_unexpr("not", cond:generate(asc, {})),
+                    asc:push(gen_if(gen_unexpr("not", cond:generate(asc, {})),
                         ts))
+                end
+                local as = pt.as
+                if as then
+                    asc:push(gen_local(as:generate(asc, {}), expr))
                 end
                 if v then
                     ptrns[n] = v
@@ -1660,6 +1664,17 @@ local parse_when = function(ls)
     end
 end
 
+local parse_as = function(ls)
+    local tok = ls.token
+    if tok.name == "as" then
+        ls:get()
+        assert_tok(ls, "<ident>")
+        local v = tok.value
+        ls:get()
+        return Symbol_Expr(nil, v)
+    end
+end
+
 local parse_table_pattern
 
 local parse_pattern = function(ls)
@@ -1668,15 +1683,15 @@ local parse_pattern = function(ls)
     if tn == "$" or tn == "<string>" or tn == "<number>"
     or tn == "true" or tn == "false" or tn == "nil" then
         ls.ndstack:push({ first_line = ls.line_number })
-        return Expr_Pattern(ls, parse_expr(ls), parse_when(ls))
+        return Expr_Pattern(ls, parse_expr(ls), parse_when(ls), parse_as(ls))
     elseif tn == "<ident>" then
         ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
         if v == "_" then
-            return Wildcard_Pattern(ls, parse_when(ls))
+            return Wildcard_Pattern(ls, parse_when(ls), parse_as(ls))
         else
-            return Variable_Pattern(ls, v, parse_when(ls))
+            return Variable_Pattern(ls, v, parse_when(ls), parse_as(ls))
         end
     elseif tn == "[" then
         return parse_table_pattern(ls)
@@ -1693,7 +1708,7 @@ parse_table_pattern = function(ls)
 
     if tok.name == "]" then
         ls:get()
-        return Table_Pattern(ls, {}, parse_when(ls))
+        return Table_Pattern(ls, {}, parse_when(ls), parse_as(ls))
     end
 
     local tok = ls.token
@@ -1722,7 +1737,7 @@ parse_table_pattern = function(ls)
     assert_tok(ls, "]")
     ls:get()
 
-    return Table_Pattern(ls, tbl, parse_when(ls))
+    return Table_Pattern(ls, tbl, parse_when(ls), parse_as(ls))
 end
 
 local parse_pattern_list = function(ls)
