@@ -112,13 +112,9 @@ local Function_State = Scope:clone {
     end
 }
 
-local gen_local = function(names, vals, ltype)
-    if ltype == "glob" then
-        return concat { names, " = ", vals or "nil" }
-    elseif not vals then
+local gen_local = function(names, vals)
+    if not vals then
         return concat { "local ", names }
-    elseif ltype == "rec" then
-        return concat { "local ", names, "; ", names, " = ", vals }
     else
         return concat { "local ", names, " = ", vals }
     end
@@ -822,7 +818,14 @@ local Variable_Pattern = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        sc:push(gen_local(self.var, kwargs.expr))
+        if kwargs.decl then
+            sc:push(gen_local(self.var))
+            return nil
+        elseif kwargs.no_local then
+            sc:push(gen_ass(self.var, kwargs.expr))
+        else
+            sc:push(gen_local(self.var, kwargs.expr))
+        end
         if kwargs.let then return self.var end
     end
 }
@@ -851,7 +854,12 @@ local Table_Pattern = Expr:clone {
         local tbl, expr = self.contents, kwargs.expr
         local mn, ret = 0
 
-        if kwargs.let then
+        if kwargs.decl then
+            for i = 1, #tbl do
+                tbl[i][2]:generate(sc, { decl = true })
+            end
+            return nil
+        elseif kwargs.let then
             local ret = {}
             for i = 1, #tbl do
                 local it = tbl[i]
@@ -860,7 +868,8 @@ local Table_Pattern = Expr:clone {
                     mn = mn + 1
                 end
                 local el = gen_index(expr, k)
-                ret[i] = v:generate(sc, { expr = el, let = true })
+                ret[i] = v:generate(sc, { expr = el, let = true,
+                    no_local = kwargs.no_local })
             end
             return gen_seq(ret)
         end
@@ -1003,6 +1012,17 @@ local Let_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local ptrns, assign, syms = self.patterns, self.assign, {}
         local len, plen = #assign, #ptrns
+        local tp = self.type
+
+        -- generate declarations
+        if tp == "rec" then
+            for i = 1, plen do
+                ptrns[i]:generate(sc, {
+                    decl = true,
+                    let  = true
+                })
+            end
+        end
 
         for i = 1, len - 1 do
             local expr = assign[i]
@@ -1025,8 +1045,7 @@ local Let_Expr = Expr:clone {
         local rids = {}
         for i = 1, plen do
             rids[#rids + 1] = ptrns[i]:generate(sc, {
-                expr = syms[i],
-                let  = true
+                expr = syms[i], let = true, no_local = tp ~= nil
             })
         end
 
@@ -2043,7 +2062,7 @@ parse_expr = function(ls)
             end
         end
 
-        return Let_Expr(ls, ltype or "default", ptrns, exprs)
+        return Let_Expr(ls, ltype, ptrns, exprs)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "quote" then
