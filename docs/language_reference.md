@@ -329,8 +329,6 @@ An identifier: `foobar`
 `pattern1 and pattern2`
 - **OR pattern:**
 `pattern1 or pattern2`
-- **NOT pattern:**
-`not pattern2`
 - **Cons pattern:**
 `first :: rest`
 - **Table pattern:**
