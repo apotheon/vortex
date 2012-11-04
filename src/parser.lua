@@ -87,6 +87,15 @@ local Scope = util.Object:clone {
         body[#body + 1] = stat
     end,
 
+    merge = function(self, sc)
+        if self.locked then return nil end
+        local bd1, bd2 = self.body, sc.body
+        local len1, len2 = #bd1, #bd2
+        for i = 1, len2 do
+            bd1[len1 + i] = bd2[i]
+        end
+    end,
+
     lock = function(self)
         self.locked = true
     end,
@@ -864,6 +873,8 @@ local Table_Pattern = Expr:clone {
     generate = function(self, sc, kwargs)
         local tbl, expr = self.contents, kwargs.expr
         local mn, ret = 0
+
+        local ns = Scope(sc.fstate, sc.indent)
         for i = 1, #tbl do
             local it = tbl[i]
             local k, v = it[1], it[2]
@@ -871,11 +882,15 @@ local Table_Pattern = Expr:clone {
                 mn = mn + 1
             end
             local el = gen_index(expr, k)
-            local pv = v:generate(sc, { expr = el })
+            local pv = v:generate(ns, { expr = el })
             ret = ret and gen_binexpr("and", ret, pv) or pv
         end
-        local lc = gen_binexpr("==", gen_unexpr("#", expr), mn)
-        ret = ret and gen_binexpr("and", ret, lc) or lc
+
+        local ts = Scope(sc.fstate, sc.indent + 1)
+        ts:push(gen_goto(kwargs.next_arm))
+        sc:push(gen_if(gen_binexpr("~=", gen_unexpr("#", expr), mn), ts))
+        sc:merge(ns)
+
         return ret
     end
 }
@@ -924,7 +939,8 @@ local Match_Expr = Expr:clone {
             for i = 1, #pl do
                 local pt = pl[i]
                 local v = pt:generate(asc, {
-                    expr = exps[i] or "nil"
+                    expr = exps[i] or "nil",
+                    next_arm = armlb
                 })
                 local cond = pt.cond
                 if cond then
