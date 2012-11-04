@@ -2020,11 +2020,27 @@ parse_expr = function(ls)
             ls:get()
         end
 
-        local ptrns = parse_pattern_list(ls, true)
+        local ptrns
+        if tok.name == "(" then
+            ls:get()
+            ptrns = parse_pattern_list(ls, true)
+            assert_tok(ls, ")")
+            ls:get()
+        else
+            ptrns = { parse_pattern(ls, true) }
+        end
+
         local exprs
         if tok.name == "=" then
             ls:get()
-            exprs = parse_exprlist(ls)
+            if tok.name == "(" then
+                ls:get()
+                exprs = parse_exprlist(ls)
+                assert_tok(ls, ")")
+                ls:get()
+            else
+                exprs = { parse_expr(ls) }
+            end
         end
 
         return Let_Expr(ls, ltype or "default", ptrns, exprs)
