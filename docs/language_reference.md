@@ -197,22 +197,29 @@ Metatables can be used to control table indexing. Global variables are
 members of a global table called `_G`, so that accessing `foo` is
 equivalent to `_G["foo"]`. This can be used to perform reflection.
 #### Let expression
-    let_expr ::= 'let' [ 'rec' | 'glob' ] ident_list [ '=' expr_list ]
+    let_expr ::= 'let' [ 'rec' | 'glob' ] ( pattern | ( '(' pattern_list ')' ) )
+                 [ '=' ( expr | ( '(' expr_list ')' ) ]
 You use the `let` expression to declare (and define) variables. Vortex unlike
 Lua uses the "strict" mode, any variable must be declared before you can
 assign it. A `let` expression is formed by using the `let` keyword along
 with optional `rec` (recursive binding where the value is aware of itself)
 or `glob` (makes a global variable instead of local variable, a global
 variable is always aware of itself) keywords, followed by a list of
-identifiers (one or more) and optional assignment part (consisting of the
-assignment operator and a list of expressions with always at least one
-expression). If you don't provide the assignment part, the variables will be
-nil. Thus doing `let foo = nil` and `let foo` is equivalent.
+patterns (see pattern matching, one or more) and optional assignment part
+(consisting of the assignment operator and a list of expressions with always
+at least one expression). If you don't provide the assignment part, the variables
+will be nil. Thus doing `let foo = nil` and `let foo` is equivalent.
+
+To avoid syntax ambiguities, you have to put the sides of the `let` expression
+into parentheses if they contain more than one pattern/expression.
 
 You can shadow `let` expressions. They always evaluate to the value of the
-variable. Assignment without `let` (setting value of an already declared
-variable) is described in binary operators (assignment is a left associative
-binary operation).
+variable (or a list of variables).
+
+You can use a limited set of patterns (only non-conditional patterns, that is,
+in this case variable pattern, table pattern and cons pattern). Table pattern
+always matches in this case, no matter if the elements exist. You may not use
+any other patterns except variable patterns in the `let` expression.
 #### If expression
     expr_branch ::= '->' expr | block
     if_expr ::= 'if' expr expr_branch [ 'else' (expr | expr_branch) ]
