@@ -824,6 +824,34 @@ local If_Expr = Expr:clone {
     end
 }
 
+local And_Pattern = Expr:clone {
+    name = "And_Pattern",
+
+    __init = function(self, ps, lhs, rhs, cond, as)
+        Expr.__init(self, ps)
+        self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
+    end,
+
+    generate = function(self, sc, kwargs)
+        return gen_binexpr("and", self.lhs:generate(sc, kwargs),
+                                  self.rhs:generate(sc, kwargs))
+    end
+}
+
+local Or_Pattern = Expr:clone {
+    name = "Or_Pattern",
+
+    __init = function(self, ps, lhs, rhs, cond, as)
+        Expr.__init(self, ps)
+        self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
+    end,
+
+    generate = function(self, sc, kwargs)
+        return gen_binexpr("or", self.lhs:generate(sc, kwargs),
+                                 self.rhs:generate(sc, kwargs))
+    end
+}
+
 local Expr_Pattern = Expr:clone {
     name = "Expr_Pattern",
 
@@ -1398,8 +1426,7 @@ parse_binexpr = function(ls, mp)
         lhs = Binary_Expr(ls, op, lhs, rhs)
         curr:push({ first_line = ls.line_number })
     end
-    local nlen = #curr
-    for i = 1, nlen - len do curr:pop() end
+    for i = 1, #curr - len do curr:pop() end
     return lhs
 end
 
@@ -1686,7 +1713,16 @@ local parse_pattern = function(ls)
     if tn == "$" or tn == "<string>" or tn == "<number>"
     or tn == "true" or tn == "false" or tn == "nil" then
         ls.ndstack:push({ first_line = ls.line_number })
-        return Expr_Pattern(ls, parse_expr(ls), parse_when(ls), parse_as(ls))
+        local exp
+        if tn == "$" then
+            exp = parse_expr(ls)
+        else
+            ls.ndstack:push({ first_line = ls.line_number })
+            local v = tok.value or tn
+            ls:get()
+            exp = Value_Expr(ls, v)
+        end
+        return Expr_Pattern(ls, exp, parse_when(ls), parse_as(ls))
     elseif tn == "<ident>" then
         ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
@@ -1699,7 +1735,6 @@ local parse_pattern = function(ls)
     elseif tn == "[" then
         return parse_table_pattern(ls)
     else
-        print(tn, tok.value, string.byte(tn))
         syntax_error(ls, "pattern expected")
     end
 end
@@ -1743,10 +1778,34 @@ parse_table_pattern = function(ls)
     return Table_Pattern(ls, tbl, parse_when(ls), parse_as(ls))
 end
 
+local Pattern_Ops = {
+    ["or"] = { 1, Or_Pattern }, ["and"] = { 2, And_Pattern }
+}
+
+local parse_patternprec
+parse_patternprec = function(ls, mp)
+    local curr = ls.ndstack
+    local len = #curr
+    curr:push({ first_line = ls.line_number })
+    mp = mp or 1
+    local lhs = parse_pattern(ls)
+    while true do
+        local cur = ls.token.name
+        local t = Pattern_Ops[cur]
+        if not cur or not t or t[1] < mp then break end
+        ls:get()
+        local rhs = parse_patternprec(ls, t[1])
+        lhs = t[2](ls, lhs, rhs)
+        curr:push({ first_line = ls.line_number })
+    end
+    for i = 1, #curr - len do curr:pop() end
+    return lhs
+end
+
 local parse_pattern_list = function(ls)
     local tok, ptrns = ls.token, {}
     repeat
-        ptrns[#ptrns + 1] = parse_pattern(ls)
+        ptrns[#ptrns + 1] = parse_patternprec(ls)
     until tok.name ~= "," or not ls:get()
     return ptrns
 end
