@@ -1783,12 +1783,26 @@ local Pattern_Ops = {
 }
 
 local parse_patternprec
+
+local parse_subpattern = function(ls)
+    local tok = ls.token.name
+    if tok == "(" then
+        ls:get()
+        local v = parse_patternprec(ls)
+        if ls.token.name ~= ")" then syntax_error(ls, "missing ')'") end
+        ls:get()
+        return v
+    else
+        return parse_pattern(ls)
+    end
+end
+
 parse_patternprec = function(ls, mp)
     local curr = ls.ndstack
     local len = #curr
     curr:push({ first_line = ls.line_number })
     mp = mp or 1
-    local lhs = parse_pattern(ls)
+    local lhs = parse_subpattern(ls)
     while true do
         local cur = ls.token.name
         local t = Pattern_Ops[cur]
