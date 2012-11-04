@@ -268,21 +268,26 @@ local Symbol_Expr = Expr:clone {
 local Index_Expr = Expr:clone {
     name = "Index_Expr",
 
-    __init = function(self, ps, sym, expr)
+    __init = function(self, ps, expr, iexpr)
         Expr.__init(self, ps)
-        self.symbol, self.expr = sym, expr
+        self.expr, self.iexpr = expr, iexpr
     end,
 
     generate = function(self, sc, kwargs)
-        local ex
-        if self.expr:is_a(Value_Expr) then
-            ex = self.expr:generate(sc, {})
+        local ex, iex
+        if self.iexpr:is_a(Value_Expr) then
+            iex = self.iexpr:generate(sc, {})
         else
             local sym = unique_sym("index")
-            sc:push(gen_local(sym, self.expr:generate(sc, {})))
-            ex = sym
+            sc:push(gen_local(sym, self.iexpr:generate(sc, {})))
+            iex = sym
         end
-        return gen_index(self.symbol, ex)
+        -- no need to check for value expr here because we are
+        -- sure it isn't one (not permitted by the syntax)
+        local sym = unique_sym("expr")
+        sc:push(gen_local(sym, self.expr:generate(sc, {})))
+        ex = sym
+        return gen_index(ex, iex)
     end,
 
     is_lvalue = function(self)
@@ -1373,106 +1378,8 @@ Call_Expr = Expr:clone {
     end
 }
 
-local parse_binexpr
 local parse_expr
 local parse_exprlist
-
-local parse_prefixexpr = function(ls)
-    local tok = ls.token.name
-    if tok == "<ident>" then
-        ls.ndstack:push({ first_line = ls.line_number })
-        local v = ls.token.value
-        ls:get()
-        -- XXX: temporary
-        if ls.token.name == "[" then
-            ls:get()
-            local e = parse_expr(ls)
-            assert_tok(ls, "]")
-            ls:get()
-            return Index_Expr(ls, v, e)
-        end
-        return Symbol_Expr(ls, v)
-    else
-        syntax_error(ls, "unexpected symbol")
-    end
-end
-
-local parse_subexpr = function(ls)
-    local tok = ls.token.name
-    if tok == "(" or tok == "$" then
-        if tok == "$" then
-            ls:get()
-            assert_tok(ls, "(")
-        end
-        ls:get()
-        local v = parse_expr(ls)
-        if ls.token.name ~= ")" then syntax_error(ls, "missing ')'") end
-        ls:get()
-        return v
-    elseif not tok or Binary_Ops[tok] then
-        syntax_error(ls, "unexpected symbol")
-    elseif Unary_Ops[tok] then
-        ls.ndstack:push({ first_line = ls.line_number })
-        ls:get()
-        return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
-    elseif tok == "<number>" or tok == "<string>" then
-        ls.ndstack:push({ first_line = ls.line_number })
-        local v = ls.token.value
-        ls:get()
-        return Value_Expr(ls, v)
-    elseif tok == "nil" or tok == "true" or tok == "false" then
-        ls.ndstack:push({ first_line = ls.line_number })
-        ls:get()
-        return Value_Expr(ls, tok)
-    -- handle calls here; we parse prefix expressions, which can always
-    -- be called when it comes to syntax (semantically that's a different
-    -- case)
-    else
-        ls.ndstack:push({ first_line = ls.line_number })
-        local v = parse_prefixexpr(ls)
-        if ls.token.name == "(" then
-            ls:get()
-            if ls.token.name == ")" then
-                ls:get()
-                return Call_Expr(ls, v, {})
-            end
-            local list = parse_exprlist(ls)
-            assert_tok(ls, ")")
-            ls:get()
-            return Call_Expr(ls, v, list)
-        end
-        ls.ndstack:pop()
-        return v
-    end
-end
-
-parse_binexpr = function(ls, mp)
-    local curr = ls.ndstack
-    local len = #curr
-    curr:push({ first_line = ls.line_number })
-    mp = mp or 1
-    local lhs = parse_subexpr(ls)
-    while true do
-        local cur = ls.token.name
-
-        local t = Binary_Ops[cur]
-        if not cur or not t or t[1] < mp then break end
-
-        local op, p1, p2 = cur, t[1], t[2]
-
-        if lhs and (Ass_Ops[op] and not lhs:is_lvalue()) then
-            syntax_error(ls, "expected lvalue")
-        end
-
-        ls:get()
-        local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
-
-        lhs = Binary_Expr(ls, op, lhs, rhs)
-        curr:push({ first_line = ls.line_number })
-    end
-    for i = 1, #curr - len do curr:pop() end
-    return lhs
-end
 
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
@@ -2022,9 +1929,69 @@ local parse_yield = function(ls)
     return Yield_Expr(ls, { parse_expr(ls) })
 end
 
--- main expression parsing function
-parse_expr = function(ls)
-    local tok  = ls.token
+local parse_binexpr
+
+local parse_primaryexpr = function(ls)
+    local tok = ls.token
+    if tok.name == "(" then
+        ls:get()
+        local exp = parse_expr(ls)
+        if tok.name ~= ")" then
+            syntax_error(ls, "missing ')'")
+        end
+        ls:get()
+        return exp
+    elseif tok.name == "<ident>" then
+        ls.ndstack:push({ first_line = ls.line_number })
+        local v = tok.value
+        ls:get()
+        return Symbol_Expr(ls, v)
+    else
+        syntax_error(ls, "unexpected symbol")
+    end
+end
+
+local parse_suffixedexpr = function(ls)
+    local tok = ls.token
+
+    local exp = parse_primaryexpr(ls)
+    while true do
+        if tok.name == "." then
+            ls.ndstack:push({ first_line = ls.line_number })
+            ls:get()
+            assert_tok(ls, "<ident>")
+            ls.ndstack:push({ first_line = ls.line_number })
+            local s = tok.value
+            ls:get()
+            exp = Index_Expr(ls, exp, Symbol_Expr(ls, s))
+        elseif tok.name == "[" then
+            ls.ndstack:push({ first_line = ls.line_number })
+            ls:get()
+            local e = parse_expr(ls)
+            assert_tok(ls, "]")
+            ls:get()
+            exp = Index_Expr(ls, exp, e)
+        elseif tok.name == "(" then
+            ls.ndstack:push({ first_line = ls.line_number })
+            ls:get()
+            local el
+            if tok.name == ")" then
+                ls:get()
+                el = {}
+            else
+                el = parse_exprlist(ls)
+                assert_tok(ls, ")")
+                ls:get()
+            end
+            exp = Call_Expr(ls, exp, el)
+        else
+            return exp
+        end
+    end
+end
+
+local parse_simpleexpr = function(ls)
+    local tok = ls.token
     local name = tok.name
 
     if name == "fn" then
@@ -2113,9 +2080,54 @@ parse_expr = function(ls)
         assert_tok(ls, ")")
         ls:get()
         return ret
+    elseif Unary_Ops[tok] then
+        ls.ndstack:push({ first_line = ls.line_number })
+        ls:get()
+        return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
+    elseif name == "<number>" or name == "<string>" then
+        ls.ndstack:push({ first_line = ls.line_number })
+        local v = tok.value
+        ls:get()
+        return Value_Expr(ls, v)
+    elseif name == "nil" or name == "true" or name == "false" then
+        ls.ndstack:push({ first_line = ls.line_number })
+        ls:get()
+        return Value_Expr(ls, name)
     else
-        return parse_binexpr(ls)
+        return parse_suffixedexpr(ls)
     end
+end
+
+parse_binexpr = function(ls, mp)
+    local curr = ls.ndstack
+    local len = #curr
+    curr:push({ first_line = ls.line_number })
+    mp = mp or 1
+    local lhs = parse_simpleexpr(ls)
+    while true do
+        local cur = ls.token.name
+
+        local t = Binary_Ops[cur]
+        if not cur or not t or t[1] < mp then break end
+
+        local op, p1, p2 = cur, t[1], t[2]
+
+        if lhs and (Ass_Ops[op] and not lhs:is_lvalue()) then
+            syntax_error(ls, "expected lvalue")
+        end
+
+        ls:get()
+        local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
+
+        lhs = Binary_Expr(ls, op, lhs, rhs)
+        curr:push({ first_line = ls.line_number })
+    end
+    for i = 1, #curr - len do curr:pop() end
+    return lhs
+end
+
+parse_expr = function(ls)
+    return parse_binexpr(ls)
 end
 
 local parse = function(fname, reader)
