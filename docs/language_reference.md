@@ -60,6 +60,7 @@ plus underscore. Digits can't start an identifier.
               | '__LINE__'
               | 'again'
               | 'and'
+              | 'as'
               | 'break'
               | 'case'
               | 'cfn'
@@ -75,7 +76,7 @@ plus underscore. Digits can't start an identifier.
               | 'in'
               | 'let'
               | 'match'
-              | 'module'
+              | 'mod'
               | 'nil'
               | 'not'
               | 'or'
@@ -84,6 +85,7 @@ plus underscore. Digits can't start an identifier.
               | 'return'
               | 'seq'
               | 'true'
+              | 'when'
               | 'while'
               | 'yield'
 Keywords are used in the language and can't be used as identifiers. New
@@ -231,6 +233,7 @@ it convenient to do `else if`. However, when working with expressions in the
 #### Loop expressions
     loop_expr ::= 'while' expr expr_branch | 'do' expr_branch 'while' expr
                 | 'for' ident_list 'in' expr expr_branch
+                | 'for' ident '=' expr, expr [ ',' expr ] expr_branch
     expr ::= 'break' | 'again' | loop_expr
 There are three types of loops in Vortex.
 
@@ -242,13 +245,11 @@ You can use the `break` and `again` keywords in loops. The `break` keyword
 stops the loop. The `again` keyword skips to the next iteration (very much
 like `continue` in C).
 
-A `for` loop is a syntactic sugar for function based loops. An expression
-`for k, v in pairs(tbl) -> expr` is equivalent to `pairs(tbl, fn k, v -> expr)`.
-Unlike the latter form, a `for` loop allows you to use regular `break` and
-`again` to control the flow (with the function based form, you return `true`
-if you wish to continue the loop and `false` if you want to break out). Also,
-returning from the loop returns from the function enclosing the loop unlike
-the function based form.
+A `for` loop has two forms like in Lua with identical semantics. The numeric
+form looks like `for var=start, end[, step] -> expr`. It begins iteration at
+start and ends at end. It increments by step each iteration, step defaults to 1.
+The generic form looks like `for ident_list in iter -> expr`. Again, it performs
+identically to Lua and is compatible with all existing Lua iterators.
 #### Functions
     fn_arg  ::= ident [ '=' expr ]
     fn_args ::= fn_arg { ',' fn_arg }
@@ -281,10 +282,10 @@ but note that any references to local variables outside the quote will be lost.
     pattern ::= string_literal | number_literal | boolean_literal | ident | pattern 'as' ident
               | pattern 'and' pattern | pattern 'or' pattern | 'not' pattern | ident '::' ident
               | '[' { (pattern | (ident '=' pattern) | (special_expr '=' pattern)) } ']'
-              | special_expr | '_' | 'nil'
+              | special_expr | '_' | 'nil' | pattern 'when' expr
     pattern_list ::= pattern { ',' pattern }
-    match_body ::= { '|' pattern_list { '|' pattern_list } expr_branch }
-    match_expr ::= 'match' expr_list '->' match_body
+    match_body ::= { '|' pattern_list expr_branch }
+    match_expr ::= 'match' expr_list (('->' match_body) | ('{' match_body '}'))
 Vortex implements pattern matching not too dissimilar to its equivalent in
 languages like OCaml. The syntax is similar as well and the range of supported
 patterns is wide.
@@ -295,30 +296,31 @@ and more elegant code than when using traditional conditionals.
 
 The `match` expression generalizes over the well known `switch` statement.
 It consists of the `match` keyword, a list of input expressions followed by
-`->` and a `match` expression body. The body consists of a list of
-pattern-expression pairs called "arms" or "branches".
+`->` (or `{`, but don't forget to close the match appropriately) and a `match`
+expression body. The body consists of a list of pattern-expression pairs called
+"arms" or "branches".
 
 Each arm begins with the `|` token, followed by a list of patterns (usually
 the same amount of patterns as the amount of input expressions, but you may
-omit some sometimes). The pattern list is followed by a regular expression
+omit some sometimes). The pattern list is followed by a normal expression
 branch (in format `-> expr` or `{ block }`). Patterns are evaluated from first
 to last and the first arm that matches the given input(s) is evaluated. The
 whole `match` expression then evaluates to that arm (any other is skipped).
 
-If you provide another `|` with a pattern list in place of an expression
-branch, multiple choice is assumed (i.e. `| 5 | 10 | 15 -> expr` evaluates
-the expression for all three patterns).
-
 Unlike a `switch` statement, there is no fallthrough for the `match`
 expression. Only one arm at time is evaluated. However, most uses for
-fallthrough are eliminated because of multiple choice pattern lists.
+fallthrough are eliminated because of and/or patterns.
+
+Patterns can have 'guards' which are basically conditional expressions. For example,
+`| var when var < 10` maches input as var, but only when it's smaller than 10.
 
 You don't use anything to separate the arms, the `|` already serves as a clean
 separator. You may use the `case` keyword in its place if you prefer.
 
 Here is the list of supported patterns:
-- **Constant pattern:**
-Any string, number, boolean or nil: `"foo"`, `'hello'`, `10`, `true`, `false`, `nil`
+- **Expression pattern:**
+Any string, number, boolean, nil (`"foo"`, `'hello'`, `10`, `true`, `false`, `nil`)
+or special expression form (`$(expr)`)
 - **Variable pattern:**
 An identifier: `foobar`
 - **As pattern:**
@@ -332,9 +334,7 @@ An identifier: `foobar`
 - **Cons pattern:**
 `first :: rest`
 - **Table pattern:**
-`[ pattern1, pattern2, key = pattern, $(value_key) = pattern ]`
-- **Expression pattern:**
-`$(expression)`
+`[ pattern1, pattern2, key = pattern, $(expr) = pattern ]`
 - **Wildcard pattern:**
 Matches anything: `_`
 
