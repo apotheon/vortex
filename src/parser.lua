@@ -612,58 +612,6 @@ local Unary_Expr = Expr:clone {
     end
 }
 
-local Let_Expr = Expr:clone {
-    name = "Let_Expr",
-
-    __init = function(self, ps, ltype, idents, assign)
-        Expr.__init(self, ps)
-        self.type, self.idents, self.assign = ltype, idents, assign
-    end,
-
-    generate = function(self, sc, kwargs)
-        local syms = {}
-        local len = #self.assign
-
-        for i = 1, len do
-            local expr = self.assign[i]
-            if expr:is_a(Value_Expr) or i == len then
-                syms[#syms + 1] = expr:generate(sc, {})
-            else
-                local sym = unique_sym("let")
-                sc:push(gen_local(sym, expr:generate(sc, {})))
-                syms[#syms + 1] = sym
-            end
-        end
-
-        local idents = gen_seq(self.idents)
-        syms = gen_seq(syms)
-
-        sc:push(gen_local(idents, syms, self.type))
-
-        if not kwargs.statement then
-            return idents
-        end
-    end,
-
-    to_lua = function(self, i)
-        local idents = #self.idents == 0 and "{}"
-            or "{ " .. concat(map(self.idents,
-                function(n) return '"' .. n .. '"' end), ", ") .. " }"
-
-        local assign
-        if #self.assign == 0 then
-            assign = "{}"
-        else
-            local exprs = map(self.assign, function(expr)
-                return expr:to_lua(i + 1) end)
-            assign = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Let_Expr(%q, %s, %s)"):format(self.type, idents, assign)
-    end
-}
-
 local Function_Expr = Expr:clone {
     name = "Function_Expr",
 
@@ -827,7 +775,7 @@ local If_Expr = Expr:clone {
 local And_Pattern = Expr:clone {
     name = "And_Pattern",
 
-    __init = function(self, ps, lhs, rhs, cond, as)
+    __init = function(self, ps, lhs, rhs, as, cond)
         Expr.__init(self, ps)
         self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
     end,
@@ -841,7 +789,7 @@ local And_Pattern = Expr:clone {
 local Or_Pattern = Expr:clone {
     name = "Or_Pattern",
 
-    __init = function(self, ps, lhs, rhs, cond, as)
+    __init = function(self, ps, lhs, rhs, as, cond)
         Expr.__init(self, ps)
         self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
     end,
@@ -855,7 +803,7 @@ local Or_Pattern = Expr:clone {
 local Expr_Pattern = Expr:clone {
     name = "Expr_Pattern",
 
-    __init = function(self, ps, expr, cond, as)
+    __init = function(self, ps, expr, as, cond)
         Expr.__init(self, ps)
         self.expr, self.cond, self.as = expr, cond, as
     end,
@@ -868,20 +816,21 @@ local Expr_Pattern = Expr:clone {
 local Variable_Pattern = Expr:clone {
     name = "Variable_Pattern",
 
-    __init = function(self, ps, var, cond, as)
+    __init = function(self, ps, var, as, cond)
         Expr.__init(self, ps)
         self.var, self.cond, self.as = var, cond, as
     end,
 
     generate = function(self, sc, kwargs)
         sc:push(gen_local(self.var, kwargs.expr))
+        if kwargs.let then return self.var end
     end
 }
 
 local Wildcard_Pattern = Expr:clone {
     name = "Wildcard_Pattern",
 
-    __init = function(self, ps, cond, as)
+    __init = function(self, ps, as, cond)
         Expr.__init(self, ps)
         self.cond, self.as = cond, as
     end,
@@ -893,7 +842,7 @@ local Wildcard_Pattern = Expr:clone {
 local Table_Pattern = Expr:clone {
     name = "Table_Pattern",
 
-    __init = function(self, ps, contents, cond, as)
+    __init = function(self, ps, contents, as, cond)
         Expr.__init(self, ps)
         self.contents, self.cond, self.as = contents, cond, as
     end,
@@ -901,6 +850,20 @@ local Table_Pattern = Expr:clone {
     generate = function(self, sc, kwargs)
         local tbl, expr = self.contents, kwargs.expr
         local mn, ret = 0
+
+        if kwargs.let then
+            local ret = {}
+            for i = 1, #tbl do
+                local it = tbl[i]
+                local k, v = it[1], it[2]
+                if type(k) == "number" then
+                    mn = mn + 1
+                end
+                local el = gen_index(expr, k)
+                ret[i] = v:generate(sc, { expr = el, let = true })
+            end
+            return gen_seq(ret)
+        end
 
         local ns = Scope(sc.fstate, sc.indent)
         for i = 1, #tbl do
@@ -1026,6 +989,68 @@ local Match_Expr = Expr:clone {
         return ("If_Expr(%s, %s, %s)"):format(
             self.cond:to_lua(i + 1), self.tval:to_lua(i + 1),
             self.fval:to_lua(i + 1))
+    end
+}
+
+local Let_Expr = Expr:clone {
+    name = "Let_Expr",
+
+    __init = function(self, ps, ltype, patterns, assign)
+        Expr.__init(self, ps)
+        self.type, self.patterns, self.assign = ltype, patterns, assign
+    end,
+
+    generate = function(self, sc, kwargs)
+        local ptrns, assign, syms = self.patterns, self.assign, {}
+        local len, plen = #assign, #ptrns
+
+        for i = 1, len - 1 do
+            local expr = assign[i]
+            if expr:is_a(Value_Expr) then
+                syms[i] = expr:generate(sc, {})
+            else
+                local sym = unique_sym("let")
+                sc:push(gen_local(sym, assign[i]:generate(sc, {})))
+                syms[i] = sym
+            end
+        end
+        local lseq
+        for i = len, plen do
+            local sym = unique_sym("let")
+            lseq = lseq and gen_seq({ lseq, sym }) or sym
+            syms[i] = sym
+        end
+        sc:push(gen_local(lseq, assign[len]:generate(sc, {})))
+
+        local rids = {}
+        for i = 1, plen do
+            rids[#rids + 1] = ptrns[i]:generate(sc, {
+                expr = syms[i],
+                let  = true
+            })
+        end
+
+        if not kwargs.statement then
+            return gen_seq(rids)
+        end
+    end,
+
+    to_lua = function(self, i)
+        local idents = #self.idents == 0 and "{}"
+            or "{ " .. concat(map(self.idents,
+                function(n) return '"' .. n .. '"' end), ", ") .. " }"
+
+        local assign
+        if #self.assign == 0 then
+            assign = "{}"
+        else
+            local exprs = map(self.assign, function(expr)
+                return expr:to_lua(i + 1) end)
+            assign = "{\n" .. gen_indent(i + 1)
+                .. concat(exprs, ",\n" .. gen_indent(i + 1))
+                .. "\n" .. gen_indent(i) .. "}"
+        end
+        return ("Let_Expr(%q, %s, %s)"):format(self.type, idents, assign)
     end
 }
 
@@ -1687,14 +1712,16 @@ local parse_if = function(ls)
     return If_Expr(ls, cond, tval, nil)
 end
 
-local parse_when = function(ls)
+local parse_when = function(ls, let)
+    if let then return nil end
     if ls.token.name == "when" then
         ls:get()
         return parse_expr(ls)
     end
 end
 
-local parse_as = function(ls)
+local parse_as = function(ls, let)
+    if let then return nil end
     local tok = ls.token
     if tok.name == "as" then
         ls:get()
@@ -1707,11 +1734,11 @@ end
 
 local parse_table_pattern
 
-local parse_pattern = function(ls)
+local parse_pattern = function(ls, let)
     local tok = ls.token
     local tn  = tok.name
-    if tn == "$" or tn == "<string>" or tn == "<number>"
-    or tn == "true" or tn == "false" or tn == "nil" then
+    if (tn == "$" or tn == "<string>" or tn == "<number>"
+    or  tn == "true" or tn == "false" or tn == "nil") and not let then
         ls.ndstack:push({ first_line = ls.line_number })
         local exp
         if tn == "$" then
@@ -1722,31 +1749,33 @@ local parse_pattern = function(ls)
             ls:get()
             exp = Value_Expr(ls, v)
         end
-        return Expr_Pattern(ls, exp, parse_when(ls), parse_as(ls))
+        return Expr_Pattern(ls, exp, parse_as(ls), parse_when(ls))
     elseif tn == "<ident>" then
         ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
         if v == "_" then
-            return Wildcard_Pattern(ls, parse_when(ls), parse_as(ls))
+            return Wildcard_Pattern(ls, parse_as(ls, let),
+                parse_when(ls, let))
         else
-            return Variable_Pattern(ls, v, parse_when(ls), parse_as(ls))
+            return Variable_Pattern(ls, v, parse_as(ls, let),
+                parse_when(ls, let))
         end
     elseif tn == "[" then
-        return parse_table_pattern(ls)
+        return parse_table_pattern(ls, let)
     else
         syntax_error(ls, "pattern expected")
     end
 end
 
-parse_table_pattern = function(ls)
+parse_table_pattern = function(ls, let)
     ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
     local tok, tbl = ls.token, {}
 
     if tok.name == "]" then
         ls:get()
-        return Table_Pattern(ls, {}, parse_when(ls), parse_as(ls))
+        return Table_Pattern(ls, {}, parse_as(ls, let), parse_when(ls, let))
     end
 
     local tok = ls.token
@@ -1755,14 +1784,14 @@ parse_table_pattern = function(ls)
         if tok.name == "<ident>" and ls:lookahead() == "=" then
             local name = Value_Expr(nil, '"' .. tok.value .. '"')
             ls:get() ls:get()
-            tbl[#tbl + 1] = { name, parse_pattern(ls) }
+            tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
         elseif tok.name == "$" then
             local expr = parse_expr(ls)
             assert_tok(ls, "=")
             ls:get()
-            tbl[#tbl + 1] = { expr, parse_pattern(ls) }
+            tbl[#tbl + 1] = { expr, parse_pattern(ls, let) }
         else
-            tbl[#tbl + 1] = { idx, parse_pattern(ls) }
+            tbl[#tbl + 1] = { idx, parse_pattern(ls, let) }
             idx = idx + 1
         end
         if tok.name ~= "," then
@@ -1775,7 +1804,7 @@ parse_table_pattern = function(ls)
     assert_tok(ls, "]")
     ls:get()
 
-    return Table_Pattern(ls, tbl, parse_when(ls), parse_as(ls))
+    return Table_Pattern(ls, tbl, parse_as(ls, let), parse_when(ls, let))
 end
 
 local Pattern_Ops = {
@@ -1816,10 +1845,11 @@ parse_patternprec = function(ls, mp)
     return lhs
 end
 
-local parse_pattern_list = function(ls)
+local parse_pattern_list = function(ls, let)
     local tok, ptrns = ls.token, {}
     repeat
-        ptrns[#ptrns + 1] = parse_patternprec(ls)
+        ptrns[#ptrns + 1] = let and parse_pattern(ls, let)
+            or parse_patternprec(ls)
     until tok.name ~= "," or not ls:get()
     return ptrns
 end
@@ -1990,18 +2020,14 @@ parse_expr = function(ls)
             ls:get()
         end
 
-        if tok.name ~= "<ident>" then
-            syntax_error(ls, "unexpected symbol")
-        end
-
-        local ids = parse_identlist(ls)
+        local ptrns = parse_pattern_list(ls, true)
         local exprs
         if tok.name == "=" then
             ls:get()
             exprs = parse_exprlist(ls)
         end
 
-        return Let_Expr(ls, ltype or "default", ids, exprs)
+        return Let_Expr(ls, ltype or "default", ptrns, exprs)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "quote" then
