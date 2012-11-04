@@ -1328,7 +1328,10 @@ end
 local parse_subexpr = function(ls)
     local tok = ls.token.name
     if tok == "(" or tok == "$" then
-        if tok == "$" then ls:get() end
+        if tok == "$" then
+            ls:get()
+            assert_tok(ls, "(")
+        end
         ls:get()
         local v = parse_expr(ls)
         if ls.token.name ~= ")" then syntax_error(ls, "missing ')'") end
@@ -1964,6 +1967,12 @@ parse_expr = function(ls)
         return Vararg_Expr(ls)
     elseif name == "$" then
         ls:get()
+        if tok.name == "<ident>" then
+            ls.ndstack:push({ first_line = ls.line_number })
+            local v = tok.value
+            ls:get()
+            return Symbol_Expr(ls, v)
+        end
         assert_tok(ls, "(")
         ls:get()
         local ret = parse_expr(ls)
