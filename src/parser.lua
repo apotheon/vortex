@@ -257,6 +257,7 @@ local Symbol_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
         return self.symbol
     end,
 
@@ -278,6 +279,7 @@ local Index_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
         local ex, iex
         if self.iexpr:is_a(Value_Expr) then
             iex = self.iexpr:generate(sc, {})
@@ -313,6 +315,7 @@ Value_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
         return self.value
     end,
 
@@ -325,6 +328,7 @@ local Vararg_Expr = Expr:clone {
     name = "Vararg_Expr",
 
     generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
         local fs = sc:is_a(Function_State) and sc or sc.fstate
         local sl = get_rt_fun("select")
         return sl .. "(" .. (fs.ndefargs + 1) .. ", ...)"
@@ -430,53 +434,59 @@ local Yield_Expr = Expr:clone {
 local Block_Expr = Expr:clone {
     name = "Block_Expr",
 
-    __init = function(self, ps, exprs)
+    __init = function(self, ps, exprs, vexpr)
         Expr.__init(self, ps)
-        self.exprs = exprs
+        self.exprs, self.vexpr = exprs, vexpr
     end,
 
     generate = function(self, sc, kwargs)
-        local exprs = self.exprs
+        local exprs, vexpr = self.exprs, self.vexpr
         local len   = #exprs
 
         local no_scope = kwargs.no_scope
         local scope = (not no_scope) and Scope(sc.fstate, sc.indent + 1) or sc
 
-        for i = 1, len - 1 do
+        for i = 1, len do
             exprs[i]:generate(scope, {
                 statement = true
             })
         end
 
-        if kwargs.return_val and exprs[len]:is_scoped() then
-            sc:push(exprs[len]:generate(sc, {
+        if not vexpr then
+            if not no_scope then
+                sc:push(gen_block(scope))
+            end
+            return nil
+        end
+
+        if kwargs.return_val and vexpr:is_scoped() then
+            sc:push(vexpr:generate(sc, {
                 return_val = true
             }))
         elseif no_scope then
             if sc:is_a(Function_State) or kwargs.return_val then
-                sc:push(gen_ret(exprs[len]:generate(sc, {})))
+                sc:push(gen_ret(vexpr:generate(sc, {})))
             else
-                return exprs[len]:generate(sc, {
+                return vexpr:generate(sc, {
                     statement = kwargs.statement
                 })
             end
         elseif kwargs.statement then
-            scope:push(exprs[len]:generate(scope, {
+            scope:push(vexpr:generate(scope, {
                 statement = true
             }))
             sc:push(gen_block(scope))
         else
-            local last = exprs[len]
             local sym = unique_sym("block")
             sc:push(gen_local(sym))
-            if last:is_multret() then
+            if vexpr:is_multret() then
                 local fsc = Scope(scope.fstate, scope.indent + 1)
-                fsc:push(gen_ret(last:generate(scope, {})))
+                fsc:push(gen_ret(vexpr:generate(scope, {})))
                 scope:push(gen_ass(sym, gen_fun("", fsc)))
                 sc:push(gen_block(scope))
                 return gen_call(sym, "")
             else
-                scope:push(gen_ass(sym, last:generate(scope, {})))
+                scope:push(gen_ass(sym, vexpr:generate(scope, {})))
                 sc:push(gen_block(scope))
                 return sym
             end
@@ -488,8 +498,8 @@ local Block_Expr = Expr:clone {
     end,
 
     is_multret = function(self)
-        local exprs = self.exprs
-        return exprs[#exprs]:is_multret()
+        local vexpr = self.vexpr
+        return vexpr and vexpr:is_multret()
     end,
 
     to_lua = function(self, i)
@@ -1407,6 +1417,27 @@ local Seq_Expr = Expr:clone {
     end
 }
 
+local Pack_Expr = Expr:clone {
+    name = "Pack_Expr",
+
+    __init = function(self, ps, exprlist)
+        Expr.__init(self, ps)
+        self.exprlist = exprlist
+    end,
+
+    generate = function(self, sc, kwargs)
+        local el, exprs = self.exprlist, {}
+        for i = 1, #el do
+            exprs[i] = el[i]:generate(sc, {})
+        end
+        return gen_seq(exprs)
+    end,
+
+    is_multret = function(self)
+        return true
+    end,
+}
+
 local Quote_Expr = Expr:clone {
     name = "Quote_Expr",
 
@@ -1554,9 +1585,33 @@ local parse_block = function(ls)
         return Block_Expr(ls, exprs)
     end
 
+    if tok.name == "->" then
+        goto block_endexpr
+    end
+
     repeat
         exprs[#exprs + 1] = parse_expr(ls)
-    until tok.name == "}"
+    until tok.name == "}" or tok.name == "->"
+
+    ::block_endexpr::
+    if tok.name == "->" then
+        ls:get()
+        if tok.name == "(" then
+            ls:get()
+            local el = parse_exprlist(ls)
+            assert_tok(ls, ")")
+            ls:get()
+            ls.ndstack:push({ first_line = ls.line_number })
+            assert_tok(ls, "}")
+            ls:get()
+            return Block_Expr(ls, exprs, Pack_Expr(ls, el))
+        else
+            local exp = parse_expr(ls)
+            assert_tok(ls, "}")
+            ls:get()
+            return Block_Expr(ls, exprs, exp)
+        end
+    end
 
     assert_tok(ls, "}")
     ls:get()
@@ -1633,8 +1688,8 @@ end
 local parse_match_body
 
 local parse_function = function(ls)
-    local ln, tok = ls.line_number, ls.token
-    ls.ndstack:push({ first_line = ln })
+    local tok = ls.token
+    ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
 
     local ids, defs = parse_arglist(ls)
@@ -1643,7 +1698,7 @@ local parse_function = function(ls)
     if tok.name == "{" then
         local lah, body = ls:lookahead()
         if lah == "|" or lah == "case" then
-            ls.ndstack:push({ first_line = ln })
+            ls.ndstack:push({ first_line = ls.line_number })
             local el = {}
             for i = 1, #ids do
                 local n = ids[i]
@@ -1664,7 +1719,7 @@ local parse_function = function(ls)
 
     local n = tok.name
     if n == "|" or n == "case" then
-        ls.ndstack:push({ first_line = ln })
+        ls.ndstack:push({ first_line = ls.line_number })
         local el = {}
         for i = 1, #ids do
             local n = ids[i]
@@ -1673,6 +1728,13 @@ local parse_function = function(ls)
         end
         return Function_Expr(ls, ids, defs,
             Match_Expr(ls, el, parse_match_body(ls)))
+    elseif n == "(" then
+        ls:get()
+        local el = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        ls.ndstack:push({ first_line = ls.line_number })
+        return Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
     end
 
     return Function_Expr(ls, ids, defs, parse_expr(ls))
@@ -1683,12 +1745,22 @@ local parse_sequence = function(ls)
     ls:get()
     ls.fnstack:push({ vararg = false })
 
-    if ls.token.name == "{" then
+    local tok = ls.token
+    if tok.name == "{" then
         return Seq_Expr(ls, parse_block(ls))
     end
 
     assert_tok(ls, "->")
     ls:get()
+
+    if tok.name == "(" then
+        ls:get()
+        local el = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        ls.ndstack:push({ first_line = ls.line_number })
+        return Seq_Expr(ls, Pack_Expr(ls, el))
+    end
 
     return Seq_Expr(ls, parse_expr(ls))
 end
@@ -1697,12 +1769,22 @@ local parse_quote = function(ls)
     ls.ndstack:push({ first_line = ls.line_number })
     ls:get()
 
-    if ls.token.name == "{" then
+    local tok = ls.token
+    if tok.name == "{" then
         return Quote_Expr(ls, parse_block(ls))
     end
 
     assert_tok(ls, "->")
     ls:get()
+
+    if tok.name == "(" then
+        ls:get()
+        local el = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        ls.ndstack:push({ first_line = ls.line_number })
+        return Quote_Expr(ls, Pack_Expr(ls, el))
+    end
 
     return Quote_Expr(ls, parse_expr(ls))
 end
@@ -1719,7 +1801,17 @@ local parse_if = function(ls)
     else
         assert_tok(ls, "->")
         ls:get()
-        tval = parse_expr(ls)
+
+        if tok.name == "(" then
+            ls:get()
+            local el = parse_exprlist(ls)
+            assert_tok(ls, ")")
+            ls:get()
+            ls.ndstack:push({ first_line = ls.line_number })
+            tval = Pack_Expr(ls, el)
+        else
+            tval = parse_expr(ls)
+        end
     end
 
     if tok.name == "else" then
@@ -1730,7 +1822,16 @@ local parse_if = function(ls)
             if tok.name == "->" then
                 ls:get()
             end
-            return If_Expr(ls, cond, tval, parse_expr(ls))
+            if tok.name == "(" then
+                ls:get()
+                local el = parse_exprlist(ls)
+                assert_tok(ls, ")")
+                ls:get()
+                ls.ndstack:push({ first_line = ls.line_number })
+                return If_Expr(ls, cond, tval, Pack_Expr(ls, el))
+            else
+                return If_Expr(ls, cond, tval, parse_expr(ls))
+            end
         end
     end
 
@@ -1891,7 +1992,16 @@ parse_match_body = function(ls)
         else
             assert_tok(ls, "->")
             ls:get()
-            body = parse_expr(ls)
+            if tok.name == "(" then
+                ls:get()
+                local el = parse_exprlist(ls)
+                assert_tok(ls, ")")
+                ls:get()
+                ls.ndstack:push({ first_line = ls.line_number })
+                body = Pack_Expr(ls, el)
+            else
+                body = parse_expr(ls)
+            end
         end
         ret[#ret + 1] = { pl, body }
     until tok.name ~= "|" and tok.name ~= "case"

@@ -161,17 +161,19 @@ interchangeably with parenthesised expressions (for example,
     ident_list ::= ident { ',' ident }
     expr_list  ::= expr  { ',' expr  }
     chunk      ::= { expr }
-    block      ::= '{' { expr } '}'
+    block      ::= '{' { expr } [ '->' (expr | ( '(' expr_list ')' )) ] '}'
     expr       ::= ';' | block
 A chunk is a sequence of expressions. A Vortex source file is a chunk. Chunks
 behave like anonymous functions. They can have local variables, they can have
 environments, they can return values. This is used by Vortex's module system.
 
 A block is a sequence of expressions enclosed in curly braces. A block itself
-is an expression, evaluating to the last expression executed in the block.
-It's executed when it's evaluated. Functions can make use of this. When used
-with functions, you can return a value from a block at some specific position
-using the `ret` keyword.
+is an expression. It's executed when it's evaluated, functions can make use of
+this. When used with functions, you can return a value from a block at some
+specific position using the `return` keyword. If the block is ended with a
+`->` followed by either one expression or a list of expressions in parenthesis,
+the block evaluates to that expression (or expressions) in expression form, in
+statement form it equals explicit `return`.
 
 A semicolon is an expression evaluating to nil. It can be used to separate
 statement-form expressions in blocks and chunks when required.
@@ -221,7 +223,7 @@ in this case variable pattern, table pattern and cons pattern). Table pattern
 always matches in this case, no matter if the elements exist. You may not use
 any other patterns except variable patterns in the `let` expression.
 #### If expression
-    expr_branch ::= '->' expr | block
+    expr_branch ::= '->' expr | '(' expr_list ')' | block
     if_expr ::= 'if' expr expr_branch [ 'else' (expr | expr_branch) ]
 An `if` expression is a conditional expression. It evaluates a condition and
 if it can be converted to a boolean `true` value, it evaluates to the "true"
@@ -310,9 +312,9 @@ expression body. The body consists of a list of pattern-expression pairs called
 Each arm begins with the `|` token, followed by a list of patterns (usually
 the same amount of patterns as the amount of input expressions, but you may
 omit some sometimes). The pattern list is followed by a normal expression
-branch (in format `-> expr` or `{ block }`). Patterns are evaluated from first
-to last and the first arm that matches the given input(s) is evaluated. The
-whole `match` expression then evaluates to that arm (any other is skipped).
+branch. Patterns are evaluated from first to last and the first arm that
+matches the given input(s) is evaluated. The whole `match` expression then
+evaluates to that arm (any other is skipped).
 
 Unlike a `switch` statement, there is no fallthrough for the `match`
 expression. Only one arm at time is evaluated. However, most uses for
