@@ -2170,9 +2170,9 @@ local parse_suffixedexpr = function(ls)
             ls:get()
             assert_tok(ls, "<ident>")
             ls.ndstack:push({ first_line = ls.line_number })
-            local s = tok.value
+            local s = '"'..tok.value..'"'
             ls:get()
-            exp = Index_Expr(ls, exp, Symbol_Expr(ls, s))
+            exp = Index_Expr(ls, exp, Value_Expr(ls, s))
         elseif tok.name == "[" then
             ls.ndstack:push({ first_line = ls.line_number })
             ls:get()
