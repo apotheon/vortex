@@ -233,6 +233,10 @@ local Expr = util.Object:clone {
         return false
     end,
 
+    is_multret = function(self)
+        return false
+    end,
+
     generate = function(self, sc, kwargs)
     end,
 
@@ -404,6 +408,10 @@ local Yield_Expr = Expr:clone {
         end
     end,
 
+    is_multret = function(self)
+        return true
+    end,
+
     to_lua = function(self, i)
         local exprs
         if #self.exprs == 0 then
@@ -431,8 +439,8 @@ local Block_Expr = Expr:clone {
         local exprs = self.exprs
         local len   = #exprs
 
-        local scope = (kwargs.statement and not kwargs.no_scope) and
-            Scope(sc.fstate, sc.indent + 1) or sc
+        local no_scope = kwargs.no_scope
+        local scope = (not no_scope) and Scope(sc.fstate, sc.indent + 1) or sc
 
         for i = 1, len - 1 do
             exprs[i]:generate(scope, {
@@ -444,7 +452,7 @@ local Block_Expr = Expr:clone {
             sc:push(exprs[len]:generate(sc, {
                 return_val = true
             }))
-        elseif kwargs.no_scope then
+        elseif no_scope then
             if sc:is_a(Function_State) or kwargs.return_val then
                 sc:push(gen_ret(exprs[len]:generate(sc, {})))
             else
@@ -458,16 +466,30 @@ local Block_Expr = Expr:clone {
             }))
             sc:push(gen_block(scope))
         else
+            local last = exprs[len]
             local sym = unique_sym("block")
             sc:push(gen_local(sym))
-            scope:push(gen_ass(sym, exprs[len]:generate(scope, {})))
-            sc:push(gen_block(scope))
-            return sym
+            if last:is_multret() then
+                local fsc = Scope(scope.fstate, scope.indent + 1)
+                fsc:push(gen_ret(last:generate(scope, {})))
+                scope:push(gen_ass(sym, gen_fun("", fsc)))
+                sc:push(gen_block(scope))
+                return gen_call(sym, "")
+            else
+                scope:push(gen_ass(sym, last:generate(scope, {})))
+                sc:push(gen_block(scope))
+                return sym
+            end
         end
     end,
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_multret = function(self)
+        local exprs = self.exprs
+        return exprs[#exprs]:is_multret()
     end,
 
     to_lua = function(self, i)
@@ -725,18 +747,20 @@ local If_Expr = Expr:clone {
         local stat, rval, tsc, fsc, tval, fval, tscoped, fscoped
             = kwargs.statement, kwargs.return_val
 
-        tscoped = self.tval:is_scoped()
+        local tv, fv = self.tval, self.fval
+
+        tscoped = tv:is_scoped()
         tsc  = Scope(sc.fstate, sc.indent + 1)
-        tval = self.tval:generate(tsc, {
+        tval = tv:generate(tsc, {
             no_scope  = true,
             statement = stat,
             return_val = rval
         })
 
-        if self.fval then
-            fscoped = self.fval:is_scoped()
+        if fv then
+            fscoped = fv:is_scoped()
             fsc  = Scope(sc.fstate, sc.indent + 1)
-            fval = self.fval:generate(fsc, {
+            fval = fv:generate(fsc, {
                 no_scope  = true,
                 statement = stat,
                 return_val = rval
@@ -752,18 +776,34 @@ local If_Expr = Expr:clone {
         else
             local sym = unique_sym("if")
 
-            tsc:push(gen_ass(sym, tval))
-            if fsc then fsc:push(gen_ass(sym, fval)) end
-
             sc:push(gen_local(sym))
-            sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
-
-            return sym
+            if self:is_multret() then
+                local tfsc = Scope(tsc.fstate, tsc.indent + 1)
+                tfsc:push(gen_ret(tval))
+                tsc:push(gen_ass(sym, gen_fun("", tfsc)))
+                if fv then
+                    local ffsc = Scope(fsc.fstate, fsc.indent + 1)
+                    ffsc:push(gen_ret(fval))
+                    fsc:push(gen_ass(sym, gen_fun("", ffsc)))
+                end
+                sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
+                return gen_call(sym, "")
+            else
+                tsc:push(gen_ass(sym, tval))
+                if fsc then fsc:push(gen_ass(sym, fval)) end
+                sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
+                return sym
+            end
         end
     end,
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_multret = function(self)
+        local fv = self.fval
+        return self.tval:is_multret() or (fv and fv:is_multret())
     end,
 
     to_lua = function(self, i)
@@ -911,9 +951,19 @@ local Match_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local stat, rval = kwargs.statement, kwargs.return_val
 
+        local al = self.body
+        local narms = #al
+
+        -- find the longest arm
+        local alen = 1
+        for i = 1, narms do
+            local l = #al[i][1]
+            if l > alen then alen = l end
+        end
+
         local el = self.exprlist
-        local exps = {}
-        for i = 1, #el do
+        local elen, exps = #el, {}
+        for i = 1, elen - 1 do
             local ex = el[i]
             if ex:is_a(Value_Expr) then
                 exps[i] = ex:generate(sc, {})
@@ -923,15 +973,33 @@ local Match_Expr = Expr:clone {
                 exps[i] = s
             end
         end
+        local last = el[elen]
+        if last:is_multret() then
+            local lseq
+            for i = elen, alen do
+                local sym = unique_sym("expr")
+                lseq = lseq and gen_seq({ lseq, sym }) or sym
+                exps[i] = sym
+            end
+            sc:push(gen_local(lseq, last:generate(sc, {})))
+        else
+            if last:is_a(Value_Expr) then
+                exps[elen] = last:generate(sc, {})
+            else
+                local s = unique_sym("expr")
+                sc:push(gen_local(s, last:generate(sc, {})))
+                exps[elen] = s
+            end
+        end
 
-        local msym
+        local msym, multret
         if not stat and not rval then
             msym = unique_sym("match")
             sc:push(gen_local(msym))
+            multret = self:is_multret()
         end
 
-        local al = self.body
-        local narms, armlb, elb = #al, unique_sym("lbl"), unique_sym("lbl")
+        local armlb, elb = unique_sym("lbl"), unique_sym("lbl")
         for i = 1, narms do
             local arm = al[i]
             local pl, bd = arm[1], arm[2]
@@ -985,6 +1053,10 @@ local Match_Expr = Expr:clone {
             if stat or rval then
                 asc:push((rval and not bd:is_scoped())
                     and gen_ret(aval) or aval)
+            elseif multret then
+                local fsc = Scope(asc.fstate, asc.indent + 1)
+                fsc:push(gen_ret(aval))
+                asc:push(gen_ass(msym, gen_fun("", fsc)))
             else
                 asc:push(gen_ass(msym, aval))
             end
@@ -992,11 +1064,19 @@ local Match_Expr = Expr:clone {
             sc:push(gen_goto(elb))
         end
         sc:push(gen_label(elb))
-        return msym
+        return multret and gen_call(msym, "") or msym
     end,
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_multret = function(self)
+        local body = self.body
+        for i = 1, #body do
+            if body[i][2]:is_multret() then return true end
+        end
+        return false
     end,
 
     to_lua = function(self, i)
@@ -1035,17 +1115,28 @@ local Let_Expr = Expr:clone {
                 syms[i] = expr:generate(sc, {})
             else
                 local sym = unique_sym("let")
-                sc:push(gen_local(sym, assign[i]:generate(sc, {})))
+                sc:push(gen_local(sym, expr:generate(sc, {})))
                 syms[i] = sym
             end
         end
-        local lseq
-        for i = len, plen do
-            local sym = unique_sym("let")
-            lseq = lseq and gen_seq({ lseq, sym }) or sym
-            syms[i] = sym
+        local last = assign[len]
+        if last:is_multret() then
+            local lseq
+            for i = len, plen do
+                local sym = unique_sym("let")
+                lseq = lseq and gen_seq({ lseq, sym }) or sym
+                syms[i] = sym
+            end
+            sc:push(gen_local(lseq, assign[len]:generate(sc, {})))
+        else
+            if last:is_a(Value_Expr) then
+                syms[len] = last:generate(sc, {})
+            else
+                local sym = unique_sym("let")
+                sc:push(gen_local(sym, last:generate(sc, {})))
+                syms[len] = sym
+            end
         end
-        sc:push(gen_local(lseq, assign[len]:generate(sc, {})))
 
         local rids = {}
         for i = 1, plen do
@@ -1307,6 +1398,10 @@ local Seq_Expr = Expr:clone {
         return gen_call(sq, gen_call(cc, gen_fun("", fs)))
     end,
 
+    is_multret = function(self)
+        return true
+    end,
+
     to_lua = function(self, i)
         return ("Seq_Expr(%s)"):format(self.expr:to_lua(i + 1))
     end
@@ -1361,6 +1456,10 @@ Call_Expr = Expr:clone {
         else
             return gen_call(expr, syms)
         end
+    end,
+
+    is_multret = function(self)
+        return true
     end,
 
     to_lua = function(self, i)
