@@ -44,17 +44,37 @@ A quick list of features:
 The performance is comparable to handwritten Lua.
 
 ## Status
-
-It can compile and run a few examples. Mostly incomplete. A few approximations:
-
-|Component       |Status|
-|----------------|------|
-|Formal grammar  |90%   |
-|Lexer           |90%   |
-|Parser          |60%   |
-|Codegen         |30%   |
-|Runtime         |20%   |
-|Standard library|0%    |
+### Lexer
+The lexer is pretty much complete when it comes to language's current design.
+More keywords will be added and operators might change.
+### Parser
+- Parse chunks of code. __[yes]__
+- Parse blocks. __[yes]__
+- Parse basic expressions. __[yes]__
+- Parse suffix expressions. [partial]
+- Parse operator precedences. __[yes]__
+- Parse functions. __[yes]__
+- Parse coroutines and generators. [no]
+- Parse let expression. __[yes]__
+- Parse patterns. __[yes]__
+- Parse match expression. __[yes]__
+- Parse conditionals. __[yes]__
+- Parse while loops. __[yes]__
+- Parse do-while loops. __[yes]__
+- Parse numeric for loops. __[yes]__
+- Parse generic for loops. __[yes]__
+- Parse quotes. __[yes]__
+- Parse tables. __[yes]__
+- Parse sequences. __[yes]__
+- Parse lists. [no]
+- Parse additional table operations. [no]
+- Parse objects. [no]
+- Parse macros. [no]
+### Macro processor
+No work on macros has been done yet.
+### Codegen
+### Runtime
+### Standard library
 
 More descriptive table coming later.
 
