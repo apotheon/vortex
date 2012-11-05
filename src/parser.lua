@@ -293,7 +293,7 @@ local Index_Expr = Expr:clone {
         local sym = unique_sym("expr")
         sc:push(gen_local(sym, self.expr:generate(sc, {})))
         ex = sym
-        return gen_index(ex, iex)
+        return gen_index(ex, iex), ex
     end,
 
     is_lvalue = function(self)
@@ -1458,29 +1458,32 @@ local Quote_Expr = Expr:clone {
 Call_Expr = Expr:clone {
     name = "Call_Expr",
 
-    __init = function(self, ps, expr, params)
+    __init = function(self, ps, expr, params, method)
         Expr.__init(self, ps)
-        self.expr, self.params = expr, params
+        self.expr, self.params, self.method = expr, params, method or false
     end,
 
     generate = function(self, sc, kwargs)
         local syms = {}
         local len  = #self.params
+        local method = self.method
 
+        local expr, slf = self.expr:generate(sc, {})
+        if method then
+            syms[1] = slf
+        end
+        local off = method and 1 or 0
         for i = 1, len do
             local par = self.params[i]
             if par:is_a(Value_Expr) or i == len then
-                syms[#syms + 1] = par:generate(sc, {})
+                syms[i + off] = par:generate(sc, {})
             else
                 local sym = unique_sym("arg")
                 sc:push(gen_local(sym, par:generate(sc, {})))
-                syms[#syms + 1] = sym
+                syms[i + off] = sym
             end
         end
-
         syms = gen_seq(syms)
-
-        local expr = self.expr:generate(sc, {})
 
         if kwargs.statement then
             sc:push(gen_call(expr, syms))
@@ -2165,14 +2168,32 @@ local parse_suffixedexpr = function(ls)
 
     local exp = parse_primaryexpr(ls)
     while true do
-        if tok.name == "." then
+        if tok.name == "." or tok.name == ":" then
+            local mcall = (tok.name == ":")
             ls.ndstack:push({ first_line = ls.line_number })
             ls:get()
             assert_tok(ls, "<ident>")
             ls.ndstack:push({ first_line = ls.line_number })
             local s = '"'..tok.value..'"'
             ls:get()
-            exp = Index_Expr(ls, exp, Value_Expr(ls, s))
+            if mcall then
+                ls.ndstack:push({ first_line = ls.line_number })
+                assert_tok(ls, "(")
+                ls:get()
+                local el
+                if tok.name == ")" then
+                    ls:get()
+                    el = {}
+                else
+                    el = parse_exprlist(ls)
+                    assert_tok(ls, ")")
+                    ls:get()
+                end
+                exp = Call_Expr(ls, Index_Expr(ls, exp, Value_Expr(ls, s)),
+                    el, true)
+            else
+                exp = Index_Expr(ls, exp, Value_Expr(ls, s))
+            end
         elseif tok.name == "[" then
             ls.ndstack:push({ first_line = ls.line_number })
             ls:get()
