@@ -21,7 +21,7 @@ local Binary_Ops = {
     [">=" ] = { 6,  6  },
 
     -- concat
-    [".." ] = { 8,  7  },
+    ["~"  ] = { 8,  7  },
 
     -- bitwise ops
     --["|"  ] = { 9,  9  }, ["^"  ] = { 10, 10 }, ["&"  ] = { 11, 11 },
@@ -125,6 +125,9 @@ local gen_ass = function(names, vals)
 end
 
 local gen_binexpr = function(op, lhs, rhs)
+    if op == "~" then
+        op = ".."
+    end
     return concat { "(", lhs, " ", op, " ", rhs, ")" }
 end
 
@@ -2087,7 +2090,7 @@ local parse_for = function(ls)
         ls:get() ls:get()
 
         first = parse_expr(ls)
-        assert_tok(ls, ",")
+        assert_tok(ls, "..")
         ls:get()
 
         last = parse_expr(ls)
