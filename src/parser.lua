@@ -1458,19 +1458,23 @@ local Quote_Expr = Expr:clone {
 Call_Expr = Expr:clone {
     name = "Call_Expr",
 
-    __init = function(self, ps, expr, params, method)
+    __init = function(self, ps, expr, params, method, rt)
         Expr.__init(self, ps)
-        self.expr, self.params, self.method = expr, params, method or false
+        self.expr, self.params, self.method, self.rt = expr, params,
+            method or false, rt or false
     end,
 
     generate = function(self, sc, kwargs)
         local syms = {}
         local len  = #self.params
-        local method = self.method
+        local method, rt = self.method, self.rt
 
         local expr, slf = self.expr:generate(sc, {})
         if method then
             syms[1] = slf
+        end
+        if rt then
+            expr = get_rt_fun(expr)
         end
         local off = method and 1 or 0
         for i = 1, len do
@@ -2316,8 +2320,19 @@ local parse_simpleexpr = function(ls)
         return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
     elseif name == "<number>" or name == "<string>" then
         ls.ndstack:push({ first_line = ls.line_number })
+        ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
+        local d = tok.data
+        tok.data = nil
+        if d and #d > 0 then
+            local exprs = { Value_Expr(ls, v) }
+            for i = 1, #d do
+                exprs[i + 1] = Symbol_Expr(nil, d[i].value)
+            end
+            return Call_Expr(ls, Value_Expr(nil, "str_fmt"),
+                exprs, false, true)
+        end
         return Value_Expr(ls, v)
     elseif name == "nil" or name == "true" or name == "false" then
         ls.ndstack:push({ first_line = ls.line_number })

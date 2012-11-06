@@ -65,6 +65,8 @@ local save_and_next_char = function(ls, buf)
     next_char(ls)
 end
 
+local lex
+
 local read_number = function(ls, token)
     local buf = { ls.current }
     next_char(ls)
@@ -155,7 +157,7 @@ local read_long_string = function(ls, nsep, buf)
     end
 end
 
-local read_string = function(ls, delim, buf)
+local read_string = function(ls, delim, buf, exprs)
     save_and_next_char(ls, buf)
 
     while ls.current ~= delim do
@@ -186,6 +188,17 @@ local read_string = function(ls, delim, buf)
             else
                 save_and_next_char(ls, buf)
             end
+        -- interpolation
+        elseif curr == "$" then
+            next_char(ls)
+            local tok = {}
+            local name = lex(ls, tok)
+            if name ~= "<ident>" then
+                buf[#buf + 1] = tok.value or name
+            else
+                buf[#buf + 1] = "%s"
+                exprs[#exprs + 1] = tok
+            end
         -- other characters are saved as usual
         else
             save_and_next_char(ls, buf)
@@ -196,7 +209,7 @@ local read_string = function(ls, delim, buf)
     save_and_next_char(ls, buf)
 end
 
-local lex = function(ls, token)
+lex = function(ls, token)
     token.value = nil
     while true do
         local curr = ls.current
@@ -420,9 +433,10 @@ local lex = function(ls, token)
 
         -- short strings
         elseif curr == '"' or curr == "'" then
-            local buf  = {}
-            read_string(ls, curr, buf)
+            local buf, exprs = {}, {}
+            read_string(ls, curr, buf, exprs)
             token.value = table.concat(buf)
+            token.data = exprs
             return "<string>"
 
         -- keywords, identifiers, single-char tokens

@@ -79,4 +79,7 @@ else
     M.__vx_bswap = bit.bswap
 end
 
+-- temporary
+M.__vx_str_fmt = _G.string.format
+
 return M
