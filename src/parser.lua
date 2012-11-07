@@ -951,7 +951,8 @@ local Table_Pattern = Expr:clone {
                 mn = mn + 1
             end
             local el = gen_index(expr, k)
-            local pv = v:generate(ns, { expr = el })
+            local pv = v:generate(ns, { expr = el,
+                next_arm = kwargs.next_arm })
             ret = ret and gen_binexpr("and", ret, pv) or pv
         end
 
@@ -1653,7 +1654,7 @@ local parse_table = function(ls)
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, '"' .. tok.value .. '"')
+            local name = Value_Expr(nil, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
         elseif tok.name == "$" then
@@ -1929,7 +1930,7 @@ parse_table_pattern = function(ls, let)
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, '"' .. tok.value .. '"')
+            local name = Value_Expr(nil, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
         elseif tok.name == "$" then
@@ -2192,7 +2193,7 @@ local parse_suffixedexpr = function(ls)
             ls:get()
             assert_tok(ls, "<ident>")
             ls.ndstack:push({ first_line = ls.line_number })
-            local s = '"'..tok.value..'"'
+            local s = tok.value
             ls:get()
             if mcall then
                 ls.ndstack:push({ first_line = ls.line_number })
@@ -2303,7 +2304,7 @@ local parse_simpleexpr = function(ls)
     elseif name == "__FILE__" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
-        return Value_Expr(ls, '"' .. ls.source .. '"')
+        return Value_Expr(ls, ls.source)
     elseif name == "__LINE__" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
