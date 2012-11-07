@@ -69,6 +69,13 @@ local is_digit = function(ch)
     return (i >= 48 and i <= 57)
 end
 
+-- hex digit?
+local is_hex_digit = function(ch)
+    local i = ch:byte()
+    return (i >= 48 and i <= 57) or (i >= 65 and i <= 70)
+        or (i >= 97 and i <= 102)
+end
+
 --
 -- object system
 --
@@ -370,6 +377,7 @@ return {
     is_alpha = is_alpha,
     is_alnum = is_alnum,
     is_digit = is_digit,
+    is_hex_digit = is_hex_digit,
 
     -- checks if the given character can be in an identifier
     is_ident = function(ch)
@@ -426,5 +434,11 @@ return {
             r[i] = fun(tbl[i])
         end
         return r
-    end
+    end,
+
+    band = bit.band,
+    bor  = bit.bor,
+    bnot = bit.bnot,
+    lshift = bit.lshift,
+    rshift = bit.rshift
 }

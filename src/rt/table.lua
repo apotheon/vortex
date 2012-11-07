@@ -16,6 +16,18 @@ M.__vx_tbl_append = function(tbl, ...)
     end
 end
 
+-- XXX: optimize? assume hash keys?
+M.__vx_tbl_join = function(a, b)
+    local ret, alen = {}, #a
+    for i = 1, alen do
+        ret[i] = a[i]
+    end
+    for i = 1, #b do
+        ret[alen + i] = b[i]
+    end
+    return ret
+end
+
 M.__vx_tbl_concat = _G.table.concat
 M.__vx_tbl_insert = _G.table.insert
 M.__vx_tbl_remove = _G.table.remove

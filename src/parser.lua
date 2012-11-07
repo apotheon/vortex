@@ -112,6 +112,11 @@ local Function_State = Scope:clone {
     end
 }
 
+local gen_str = function(str, level)
+    local ind = ("="):rep(level or 0)
+    return concat { "[", ind, "[", str, "]", ind, "]" }
+end
+
 local gen_local = function(names, vals)
     if not vals then
         return concat { "local ", names }
@@ -127,6 +132,9 @@ end
 local gen_binexpr = function(op, lhs, rhs)
     if op == "~" then
         op = ".."
+    elseif op == "++" then
+        local f = get_rt_fun("tbl_join")
+        return concat { f, "(", lhs, ", ", rhs, ")" }
     end
     return concat { "(", lhs, " ", op, " ", rhs, ")" }
 end
@@ -312,13 +320,17 @@ local Index_Expr = Expr:clone {
 Value_Expr = Expr:clone {
     name = "Value_Expr",
 
-    __init = function(self, ps, val)
+    __init = function(self, ps, val, level)
         Expr.__init(self, ps)
-        self.value = val
+        self.value, self.level = val, level
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
+        local v = self.value
+        if type(v) == "string" then
+            return gen_str(v, self.level)
+        end
         return self.value
     end,
 
@@ -599,15 +611,14 @@ Binary_Expr = Expr:clone {
         local op = self.op
         if Ass_Ops[op] then
             local lhs, sym = self.lhs, unique_sym("rhs")
-            local iv, av = lhs:generate(sc, {})
-            if not av then av = iv end
+            local iv = lhs:generate(sc, {})
             if op == "=" then
                 sc:push(gen_local(sym, self.rhs:generate(sc, {})))
             else
-                sc:push(gen_local(sym, gen_binexpr(op:sub(1, #op - 1), av,
+                sc:push(gen_local(sym, gen_binexpr(op:sub(1, #op - 1), iv,
                     self.rhs:generate(sc, {}))))
             end
-            sc:push(gen_ass(av, sym))
+            sc:push(gen_ass(iv, sym))
             return sym, av
         end
 
@@ -2321,22 +2332,38 @@ local parse_simpleexpr = function(ls)
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
-    elseif name == "<number>" or name == "<string>" then
-        ls.ndstack:push({ first_line = ls.line_number })
+    elseif name == "<number>" then
         ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
-        local d = tok.data
-        tok.data = nil
-        if d and #d > 0 then
-            local exprs = { Value_Expr(ls, v) }
-            for i = 1, #d do
-                exprs[i + 1] = Symbol_Expr(nil, d[i].value)
-            end
-            return Call_Expr(ls, Value_Expr(nil, "str_fmt"),
-                exprs, false, true)
-        end
         return Value_Expr(ls, v)
+    elseif name == "<string>" then
+        ls.ndstack:push({ first_line = ls.line_number })
+        local exprs, levels, v = { true }, {}
+        repeat
+            v = v and (v .. tok.value) or tok.value
+            local d = tok.data
+            tok.data = nil
+            if d then
+                for i = 1, #d do
+                    exprs[#exprs + 1] = Symbol_Expr(nil, d[i].value)
+                end
+                local lvls = d.levels
+                for k, v in pairs(lvls) do levels[k] = true end
+            end
+        until ls:get() ~= "<string>"
+
+        local level = 0
+        while levels[level] do
+            level = level + 1
+        end
+        if #exprs > 1 then
+            ls.ndstack:push({ first_line = ls.line_number })
+            exprs[1] = Value_Expr(ls, v, level)
+            return Call_Expr(ls, Symbol_Expr(nil, "str_fmt"), exprs,
+                false, true)
+        end
+        return Value_Expr(ls, v, level)
     elseif name == "nil" or name == "true" or name == "false" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()

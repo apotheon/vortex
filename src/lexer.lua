@@ -8,14 +8,15 @@
 
 local util = require("util")
 
-local is_newline = util.is_newline
-local is_white   = util.is_white
-local is_ascii   = util.is_ascii
-local is_ident   = util.is_ident
-local is_keyword = util.is_keyword
-local is_alnum   = util.is_alnum
-local is_digit   = util.is_digit
-local fatal      = util.fatal
+local is_newline   = util.is_newline
+local is_white     = util.is_white
+local is_ascii     = util.is_ascii
+local is_ident     = util.is_ident
+local is_keyword   = util.is_keyword
+local is_alnum     = util.is_alnum
+local is_digit     = util.is_digit
+local is_hex_digit = util.is_hex_digit 
+local fatal        = util.fatal
 
 -- all of the core vortex keywords
 local keywords = {
@@ -44,7 +45,9 @@ local syntax_error = function(ls, msg)
 end
 
 local next_char = function(ls)
-    ls.current  = ls.reader()
+    local c = ls.reader()
+    ls.current = c
+    return c
 end
 local next_line = function(ls)
     local prev = ls.current
@@ -117,79 +120,134 @@ read_long_comment = function(ls)
     end
 end
 
-local skip_sep = function(ls, buf)
-    local cnt  = 0
-    local curr = ls.current
-    assert(curr == "[" or curr == "]")
-
-    save_and_next_char(ls, buf)
-
-    while ls.current == "=" do
-        save_and_next_char(ls, buf)
-        cnt = cnt + 1
+local char = string.char
+local read_hex_esc = function(ls)
+    local r = ""
+    for i = 2, 3 do
+        local c = next_char(ls)
+        r = r .. c
+        if not is_hex_digit(c) then
+            lex_error(ls, "hexadecimal digit expected", "x" .. r)
+        end
     end
-
-    return ls.current == curr and cnt or -cnt - 1
+    return char(tonumber("0x" .. r))
 end
 
-local read_long_string = function(ls, nsep, buf)
-    save_and_next_char(ls, buf)
-    if is_newline(ls.current) then
-        next_line(ls)
+local read_dec_esc = function(ls)
+    local r = ""
+    for i = 1, 3 do
+        local curr = ls.current
+        if not is_digit(curr) then
+            break
+        end
+        r = r .. curr
+        next_char(ls)
     end
+    local n = tonumber(r)
+    if n > 255 then
+        lex_error(ls, "decimal escape too large", r)
+    end
+    return char(n)
+end
 
+local read_string = function(ls, delim, buf, exprs, prefixes, long)
+    local usedlevels, sp = {}, prefixes or {}
+    local raw, expand = sp.raw, sp.expand
     while true do
         local  curr = ls.current
-        if not curr then
-            lex_error(ls, "unfinished long string", "<eos>")
-        elseif is_newline(curr) then
-            table.insert(buf, "\n")
-            next_line(ls)
-        elseif curr == "]" then
-            if skip_sep(ls, buf) == nsep then
-                -- skip ]
-                save_and_next_char(ls, buf)
+        if not long then
+            if curr == delim then
                 break
             end
         else
-            save_and_next_char(ls, buf)
+            if curr == delim then
+                curr = next_char(ls)
+                if curr == delim then
+                    curr = next_char(ls)
+                    if curr == delim then
+                        break
+                    else
+                        buf[#buf + 1] = delim .. delim
+                    end
+                else
+                    buf[#buf + 1] = delim
+                end
+            end
         end
-    end
-end
 
-local read_string = function(ls, delim, buf, exprs)
-    save_and_next_char(ls, buf)
-
-    while ls.current ~= delim do
-        local  curr = ls.current
-
-        -- these errors have to be handled during lexing (line numbers etc.)
-        -- other errors are handled by Lua
         if not curr then
             lex_error(ls, "unfinished string", "<eos>")
-        -- newline without escape means error
-        elseif is_newline(curr) then
+        elseif is_newline(curr) and not long then
             lex_error(ls, "unfinished string", table.concat(buf))
-        -- escape sequences
         elseif curr == "\\" then
-            -- save the \, it has to be in the source
-            save_and_next_char(ls, buf)
-
+            next_char(ls)
             local curr = ls.current
-
-            -- newlines - insert a real newline
-            if is_newline(curr) then
-                table.insert(buf, "\n")
+            if curr == "a" then
+                buf[#buf + 1] = raw and "\\a" or "\a"
                 next_char(ls)
-            -- EOS - error
+            elseif curr == "b" then
+                buf[#buf + 1] = raw and "\\b" or "\b"
+                next_char(ls)
+            elseif curr == "f" then
+                buf[#buf + 1] = raw and "\\f" or "\f"
+                next_char(ls)
+            elseif curr == "n" then
+                buf[#buf + 1] = raw and "\\n" or "\n"
+                next_char(ls)
+            elseif curr == "r" then
+                buf[#buf + 1] = raw and "\\r" or "\r"
+                next_char(ls)
+            elseif curr == "t" then
+                buf[#buf + 1] = raw and "\\t" or "\t"
+                next_char(ls)
+            elseif curr == "v" then
+                buf[#buf + 1] = raw and "\\v" or "\v"
+                next_char(ls)
+            elseif curr == "x" then
+                buf[#buf + 1] = raw and "\\x" or read_hex_esc(ls, raw)
+                next_char(ls)
+            elseif curr == "z" then
+                next_char(ls)
+                while is_newline(ls.current) or is_white(ls.current) do
+                    if is_newline(ls.current) then
+                        next_line(ls)
+                    else
+                        next_char(ls)
+                    end
+                end
+            elseif curr == "\n" or curr == "\r" then
+                next_line(ls)
+                if raw then
+                    buf[#buf + 1] = long and "\\\n" or "\\"
+                end
+            elseif curr == "\\" or curr == '"' or curr == "'" then
+                buf[#buf + 1] = raw and ("\\" .. curr) or curr
+                next_char(ls)
             elseif not curr then
                 lex_error(ls, "unfinished string", "<eos>")
-            -- otherwise save - will be handled by Lua
+            elseif raw then
+                buf[#buf + 1] = "\\"
             else
+                if not is_digit(curr) then
+                    lex_error(ls, "invalid escape sequence", curr)
+                end
+                buf[#buf + 1] = read_dec_esc(ls)
+            end
+        -- embedded Lua "long" strings
+        elseif curr == "[" or curr == "]" then
+            local c = curr
+            save_and_next_char(ls, buf)
+            local lev = 0
+            while ls.current == "=" do
+                lev = lev + 1
                 save_and_next_char(ls, buf)
             end
+            if ls.current == c then
+                usedlevels[lev] = true
+            end
+            save_and_next_char(ls, buf)
         -- interpolation
-        elseif curr == "$" then
+        elseif curr == "$" and expand then
             next_char(ls)
             local tok = {}
             local name = lex(ls, tok)
@@ -206,7 +264,8 @@ local read_string = function(ls, delim, buf, exprs)
     end
 
     -- remove the ending delimiter
-    save_and_next_char(ls, buf)
+    next_char(ls)
+    return usedlevels
 end
 
 lex = function(ls, token)
@@ -416,27 +475,21 @@ lex = function(ls, token)
             next_char(ls)
             return "::"
 
-        -- long strings or [
-        elseif curr == "[" then
-            local buf  = {}
-            local nsep = skip_sep(ls, buf)
-            if    nsep >= 0 then
-                read_long_string(ls, nsep, buf)
-                token.value = table.concat(buf)
-                return "<string>"
-            elseif nsep == -1 then
-                return "["
-            else
-                lex_error(ls, "invalid long string delimiter",
-                    table.concat(buf))
-            end
-
-        -- short strings
+        -- strings
         elseif curr == '"' or curr == "'" then
+            local delim, long = curr
+            curr = next_char(ls)
+            if curr == delim then
+                curr = next_char(ls)
+                if curr == delim then
+                    long = true
+                    next_char(ls)
+                end
+            end
             local buf, exprs = {}, {}
-            read_string(ls, curr, buf, exprs)
-            token.value = table.concat(buf)
-            token.data = exprs
+            exprs.levels = read_string(ls, delim, buf, exprs, nil, long)
+            token.value  = table.concat(buf)
+            token.data   = exprs
             return "<string>"
 
         -- keywords, identifiers, single-char tokens
@@ -446,8 +499,26 @@ lex = function(ls, token)
                 local buf = { curr }
                 next_char(ls)
 
+                local raw, expand = 0, 0
+                if curr == "e" or curr == "E" then
+                    expand = expand + 1
+                elseif curr == "r" or curr == "R" then
+                    raw = raw + 1
+                end
+                local strp = raw ~= 0 or expand ~= 0
+
                 while ls.current and
                     (is_ident(ls.current) or is_keyword(ls.current)) do
+                    if strp then
+                        local curr = ls.current
+                        if curr == "e" or curr == "E" then
+                            expand = expand + 1
+                        elseif curr == "r" or curr == "R" then
+                            raw = raw + 1
+                        else
+                            raw, expand, strp = nil, nil, false
+                        end
+                    end
                     save_and_next_char(ls, buf)
                 end
 
@@ -455,6 +526,30 @@ lex = function(ls, token)
                 if keywords[str] then
                     return  str
                 else
+                    if strp then
+                        local curr = ls.current
+                        if curr == '"' or curr == "'" then
+                            if raw > 1 or expand > 1 then
+                                lex_error(ls, "invalid string prefix", str)
+                            end
+                            local delim, long = curr
+                            curr = next_char(ls)
+                            if curr == delim then
+                                curr = next_char(ls)
+                                if curr == delim then
+                                    long = true
+                                    next_char(ls)
+                                end
+                            end
+                            local buf, exprs = {}, {}
+                            exprs.levels = read_string(ls, delim, buf, exprs, {
+                                raw = raw ~= 0, expand = expand ~= 0
+                            }, long)
+                            token.value = table.concat(buf)
+                            token.data = exprs
+                            return "<string>"
+                        end
+                    end
                     token.value = str
                     return "<ident>"
                 end

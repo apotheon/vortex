@@ -40,17 +40,21 @@
         <EOL_SPAN TYPE="COMMENT1">//</EOL_SPAN>
 
         <!-- string literals -->
-        <SPAN TYPE="LITERAL1" ESCAPE="\" NO_LINE_BREAK="TRUE">
+        <SPAN TYPE="LITERAL1" ESCAPE="\">
             <BEGIN>"</BEGIN>
             <END>"</END>
         </SPAN>
-        <SPAN TYPE="LITERAL1" ESCAPE="\" NO_LINE_BREAK="TRUE">
+        <SPAN TYPE="LITERAL1" ESCAPE="\">
             <BEGIN>'</BEGIN>
             <END>'</END>
         </SPAN>
-        <SPAN TYPE="LITERAL1" DELEGATE="NESTED_LITERAL">
-            <BEGIN>[[</BEGIN>
-            <END>]]</END>
+        <SPAN TYPE="LITERAL1" ESCAPE="\">
+            <BEGIN>"""</BEGIN>
+            <END>"""</END>
+        </SPAN>
+        <SPAN TYPE="LITERAL1" ESCAPE="\">
+            <BEGIN>'''</BEGIN>
+            <END>'''</END>
         </SPAN>
 
         <!-- sequences and special chars -->
@@ -160,12 +164,6 @@
         <SPAN TYPE="COMMENT1" DELEGATE="NESTED_COMMENT">
             <BEGIN>/*</BEGIN>
             <END>*/</END>
-        </SPAN>
-    </RULES>
-    <RULES SET="NESTED_LITERAL" DEFAULT="LITERAL1">
-        <SPAN TYPE="LITERAL1" DELEGATE="NESTED_LITERAL">
-            <BEGIN>[[</BEGIN>
-            <END>]]</END>
         </SPAN>
     </RULES>
 </MODE>
