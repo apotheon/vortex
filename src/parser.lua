@@ -224,6 +224,12 @@ local gen_goto = function(label)
     return "goto " .. label
 end
 
+local TAG_NUMBER  = 1
+local TAG_STRING  = 2
+local TAG_BOOLEAN = 3
+local TAG_NIL     = 4
+local TAG_INVALID = 5
+
 -- classes
 
 local Expr = util.Object:clone {
@@ -294,6 +300,9 @@ local Index_Expr = Expr:clone {
         local ex, iex
         if self.iexpr:is_a(Value_Expr) then
             iex = self.iexpr:generate(sc, {})
+            if self.iexpr:is_tag(TAG_STRING) then
+                iex = "(" .. iex .. ")"
+            end
         else
             local sym = unique_sym("index")
             sc:push(gen_local(sym, self.iexpr:generate(sc, {})))
@@ -316,12 +325,6 @@ local Index_Expr = Expr:clone {
             self.expr:to_lua(i + 1))
     end
 }
-
-local TAG_NUMBER  = 1
-local TAG_STRING  = 2
-local TAG_BOOLEAN = 3
-local TAG_NIL     = 4
-local TAG_INVALID = 5
 
 local to_tag = function(tn)
     if tn == "<string>" then
