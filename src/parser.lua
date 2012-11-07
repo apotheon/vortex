@@ -317,21 +317,45 @@ local Index_Expr = Expr:clone {
     end
 }
 
+local TAG_NUMBER  = 1
+local TAG_STRING  = 2
+local TAG_BOOLEAN = 3
+local TAG_NIL     = 4
+local TAG_INVALID = 5
+
+local to_tag = function(tn)
+    if tn == "<string>" then
+        return TAG_STRING
+    elseif tn == "<number>" then
+        return TAG_NUMBER
+    elseif tn == "true" or tn == "false" then
+        return TAG_BOOLEAN
+    elseif tn == "nil" then
+        return TAG_NIL
+    else
+        return TAG_INVALID
+    end
+end
+
 Value_Expr = Expr:clone {
     name = "Value_Expr",
 
-    __init = function(self, ps, val, level)
+    __init = function(self, ps, tag, val, level)
         Expr.__init(self, ps)
-        self.value, self.level = val, level
+        self.tag, self.value, self.level = tag, val, level
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local v = self.value
-        if type(v) == "string" then
+        local tag, v = self.tag, self.value
+        if tag == TAG_STRING then
             return gen_str(v, self.level)
         end
         return self.value
+    end,
+
+    is_tag = function(self, tag)
+        return self.tag == tag
     end,
 
     to_lua = function(self, i)
@@ -548,24 +572,38 @@ local Table_Expr = Expr:clone {
         local len = #tbl
         for i = 1, len do
             local pair = tbl[i]
-            local e = pair[2]
-            if e:is_a(Value_Expr) or i == len then
-                local p1 = pair[1]
-                if type(p1) == "number" then
-                    kvs[#kvs + 1] = pair[2]:generate(sc, {})
+            local ke, ve = pair[1], pair[2]
+            if (type(ke) == "number") then
+                if i == len or ve:is_a(Value_Expr) then
+                    kvs[#kvs + 1] = ve:generate(sc, {})
                 else
-                    kvs[#kvs + 1] = gen_ass("[" .. p1:generate(sc, {})
-                        .. "]", pair[2]:generate(sc, {}))
+                    local sym = unique_sym("arr")
+                    sc:push(gen_local(sym, ve:generate(sc, {})))
+                    kvs[#kvs + 1] = sym
+                end
+            elseif ke:is_a(Value_Expr) then
+                local kv = ke:is_tag(TAG_STRING)
+                    and ("(" .. ke:generate(sc, {}) .. ")")
+                    or ke:generate(sc, {})
+                if i == len or ve:is_a(Value_Expr) then
+                    kvs[#kvs + 1] = gen_ass("[" .. kv .. "]",
+                        ve:generate(sc, {}))
+                else
+                    local sym = unique_sym("map")
+                    sc:push(gen_local(sym, ve:generate(sc, {})))
+                    kvs[#kvs + 1] = gen_ass("[" .. kv .. "]", sym)
                 end
             else
-                local sym = unique_sym("map")
-                sc:push(gen_local(sym, pair[2]:generate(sc, {})))
-                local p1 = pair[1]
-                if type(p1) == "number" then
-                    kvs[#kvs + 1] = sym
+                local ksym = unique_sym("key")
+                sc:push(gen_local(ksym, ke:generate(sc, {})))
+                if i == len or ve:is_a(Value_Expr) then
+                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
+                        ve:generate(sc, {}))
                 else
-                    kvs[#kvs + 1] = gen_ass("[" .. p1:generate(sc, {})
-                        .. "]", sym)
+                    local sym = unique_sym("map")
+                    sc:push(gen_local(sym, ve:generate(sc, {})))
+                    kvs[#kvs + 1] = gen_ass("[" .. sym .. "]",
+                        sym)
                 end
             end
         end
@@ -1654,7 +1692,7 @@ local parse_table = function(ls)
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, tok.value)
+            local name = Value_Expr(nil, TAG_STRING, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
         elseif tok.name == "$" then
@@ -1895,7 +1933,7 @@ local parse_pattern = function(ls, let)
             ls.ndstack:push({ first_line = ls.line_number })
             local v = tok.value or tn
             ls:get()
-            exp = Value_Expr(ls, v)
+            exp = Value_Expr(ls, to_tag(tn), v)
         end
         return Expr_Pattern(ls, exp, parse_as(ls), parse_when(ls))
     elseif tn == "<ident>" then
@@ -1930,7 +1968,7 @@ parse_table_pattern = function(ls, let)
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, tok.value)
+            local name = Value_Expr(nil, TAG_STRING, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
         elseif tok.name == "$" then
@@ -2110,7 +2148,7 @@ local parse_for = function(ls)
             ls:get()
             step = parse_expr(ls)
         else
-            step = Value_Expr(nil, 1)
+            step = Value_Expr(nil, TAG_NUMBER, 1)
         end
     else
         ids = parse_identlist(ls)
@@ -2208,10 +2246,10 @@ local parse_suffixedexpr = function(ls)
                     assert_tok(ls, ")")
                     ls:get()
                 end
-                exp = Call_Expr(ls, Index_Expr(ls, exp, Value_Expr(ls, s)),
-                    el, true)
+                exp = Call_Expr(ls, Index_Expr(ls, exp,
+                    Value_Expr(ls, TAG_STRING, s)), el, true)
             else
-                exp = Index_Expr(ls, exp, Value_Expr(ls, s))
+                exp = Index_Expr(ls, exp, Value_Expr(ls, TAG_STRING, s))
             end
         elseif tok.name == "[" then
             ls.ndstack:push({ first_line = ls.line_number })
@@ -2304,31 +2342,17 @@ local parse_simpleexpr = function(ls)
     elseif name == "__FILE__" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
-        return Value_Expr(ls, ls.source)
+        return Value_Expr(ls, TAG_STRING, ls.source)
     elseif name == "__LINE__" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
-        return Value_Expr(ls, ls.line_number)
+        return Value_Expr(ls, TAG_NUMBER, ls.line_number)
     elseif name == "..." then
         assert_check(ls, ls.fnstack:top().vararg,
             "cannot use '...' outside a vararg function")
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
         return Vararg_Expr(ls)
-    elseif name == "$" then
-        ls:get()
-        if tok.name == "<ident>" then
-            ls.ndstack:push({ first_line = ls.line_number })
-            local v = tok.value
-            ls:get()
-            return Symbol_Expr(ls, v)
-        end
-        assert_tok(ls, "(")
-        ls:get()
-        local ret = parse_expr(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        return ret
     elseif Unary_Ops[tok] then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
@@ -2337,7 +2361,7 @@ local parse_simpleexpr = function(ls)
         ls.ndstack:push({ first_line = ls.line_number })
         local v = tok.value
         ls:get()
-        return Value_Expr(ls, v)
+        return Value_Expr(ls, TAG_NUMBER, v)
     elseif name == "<string>" then
         ls.ndstack:push({ first_line = ls.line_number })
         local exprs, levels, v = { true }, {}
@@ -2360,15 +2384,15 @@ local parse_simpleexpr = function(ls)
         end
         if #exprs > 1 then
             ls.ndstack:push({ first_line = ls.line_number })
-            exprs[1] = Value_Expr(ls, v, level)
+            exprs[1] = Value_Expr(ls, TAG_STRING, v, level)
             return Call_Expr(ls, Symbol_Expr(nil, "str_fmt"), exprs,
                 false, true)
         end
-        return Value_Expr(ls, v, level)
+        return Value_Expr(ls, TAG_STRING, v, level)
     elseif name == "nil" or name == "true" or name == "false" then
         ls.ndstack:push({ first_line = ls.line_number })
         ls:get()
-        return Value_Expr(ls, name)
+        return Value_Expr(ls, to_tag(name), name)
     else
         return parse_suffixedexpr(ls)
     end
@@ -2403,6 +2427,22 @@ parse_binexpr = function(ls, mp)
 end
 
 parse_expr = function(ls)
+    local tok = ls.token
+    if tok.name == "$" then
+        ls:get()
+        if tok.name == "<ident>" then
+            ls.ndstack:push({ first_line = ls.line_number })
+            local v = tok.value
+            ls:get()
+            return Symbol_Expr(ls, v)
+        end
+        assert_tok(ls, "(")
+        ls:get()
+        local expr = parse_binexpr(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        return expr
+    end
     return parse_binexpr(ls)
 end
 
