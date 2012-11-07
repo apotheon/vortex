@@ -102,61 +102,49 @@ number. Floating point literals smaller than one can omit the 0 at the start
 `0x.5` is a valid form). Optional decimal exponent is marked with `e` or `E`
 (binary exponent in hex constants is `p` or `P`).
 #### String literals
-    string_short   ::= ? any line ? { ('\\z' | '\\') ? any line ? }
-    string_literal ::= '"' string_short '"' | '\'' string_short '\''
-                     | '[' { n * '=' } '[' ? any string except the closing brackets ? ']' { n * '=' } ']'
-    string_escape  ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t' | '\\v' | '\\z' | '\\' | '\\"' | '\\\''
-    expr ::= string_literal
-String literals follow Lua rules. Short string literals evaluate escape
-sequences specified in `string_escape`. The quote and apostrophe escape
-sequences only need to be escaped in certain cases (in `"foo"`, you need
-to escape `\"`, in `'foo'` you need to escape `\'`). You may break a short
-string literal into multiple lines using `\\` (the real newline after the
-backslash will be included in the string). `\\z` works similarly, but it
-does not include the newline and also skips all whitespace until the first
-non-whitespace character after that (useful for removing indentation).
+    string_literal    ::= string_prefix (string_long | string_short)
+    string_prefix     ::= /[eErR]*/
+    string_short      ::= "'" string_short_elem "'" | '"' string_short_elem '"'
+    string_long       ::= "'''" string_long_elem "'''" | '"""' string_long_elem '"""'
+    string_short_elem ::= ? anything except a backslash, newline or the delimiter ? | string_escape
+    string_long_elem  ::= ? anything except a backslash or the delimiter ? | string_escape
+    string_escape     ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t' | '\\v' | '\\z' | '\\' | '\\"' | '\\\''
+    expr ::= string_literal { string_literal }
+String literals are modeled after Python. Short string literals are enclosed in
+single or double quotes. They can contain anyhng except a backslash (except at the
+end of the line), newline or the delimiting quote and they can contain escape sequences.
+You can break short string literals into multiple lines by putting a backslash at the end
+of the line. The newline after the backslash is not included in the string, you have to
+use a separate escape sequence if you want the newline. If you want to include the delimiter
+in the string, you have to escape it.
 
-A byte following a backslash (in regular decimal form from 0 to 255 or `xYY`
-in hexadecimal form where YY is the number) represents a code point embedded
-in the string. Embedded zeros are permitted.
+Long string literals are delimited with three quotes. Unlike short literals, they can
+contain newlines (which are saved in the string). The line break can be used here to
+prevent the string from containing a newline in that place. If you want to include
+the delimiter in the string, you can simply escape the first quote.
 
-Long string literals are written using Lua rules. A regular long string has a
-format `'[[string contents]]`. It can't be nested, for next level you use a
-format `[=[another level]=]`. You proceed similarly with deeper levels; you
-just add another separator. Long string literals can contain anything except
-their closing brackets. Escape sequences in them are not interpreted during
-tokenization. Any form of newline (carriage return, newline or a combination
-of both in any order) in them is converted to a simple newline. If a long
-string starts with a newline (right after the opening bracket) it's ignored
-for convenience.
-#### Booleans and nil
-    boolean_literal ::= 'true' | 'false'
-    expr ::= boolean_literal | 'nil'
-Simple boolean true/false constants. Expressions in conditionals etc. evaluate
-to boolean values. Nil value is "nothing". Undefined (but declared) variables
-have a nil value. The result of logical not on a nil is "true". Nil and false
-are the only two values that evaluate to false.
-#### Other tokens
-    op_binary_nkw ::= '+' | '-' | '*' | '/' | '%' | '**' | '='
-                    | '..' | '==' | '<' | '<=' | '!=' | '>' | '>='
-                    | '+=' | '-=' | '*=' | '/=' | '%=' | '^=' | '++' | '::' | '++=' | '**='
-                    | '&' | '|' | '^' | '<<' | '>>' | '&=' | '|=' | '^=' | '<<=' | '>>='
-    op_unary_nkw  ::= '-' | '#' | '~'
-    tok_other     ::= '(' | ')' | '{' | '}' | '[' | ']' | ':' | '.' | ',' | ';' | '...' | '->' | '|' | '$'
-### Expressions
-    special_expr ::= '$' '(' expr ')'
-    expr ::= special_expr
-Vortex is a fully expression based language; there are no statements.
-Statement-like expressions either jump in the code flow (like `break`,
-`again` or `goto`) or evaluate to `nil`. Expressions in Vortex should
-be familiar to people working with languages Vortex is inspired by
-(especially Lua people should feel comfortable). "Special expressions"
-written as `$(expr)` are used in certain places to denote that we really
-want to evaluate an expression in the parens and that it's not a typo (for
-example table key expressions, expression patterns or inside strings for
-interpolation). In other places special expressions can be used
-interchangeably with parenthesised expressions (for example,
-`5 + 10 * $(1 + 2)` is the same as `5 + 10 * (1 + 2)`)
+You can prefix strings with either "e" or "r" or both (doesn't matter which order,
+case doesn't matter either, but it's an error if you repeat any). Note that you can't
+put any whitespace after the prefix (it has to be followed with a delimiter). Prefixes
+change the string behavior. When the "r" prefix is used, the strings are interpreted
+as "raw". That means no escape sequences in them are evaluated, instead they're printed
+out as they are written. Same rules for forbidden characters apply. Note that when you
+escape quotes or add line breaks, they are functional (it does not error) but the
+backslashes will be visible in the string.
+
+The "e" prefix means that it will expand variables and expressions in the string.
+You can include variables using the `$foo` notation. For expressions it's similar,
+having the `$(expr)` form. You can reference local variables from there. Such string
+is no longer a constant, it's evaluated at runtime. Basicically, a string `"foo: $foo"`
+translates to something like `format("foo: %s", foo)`.
+
+Several string constants delimited with zero or more whitespace are treated as one.
+For example, `e"foo: $foo\n"r"xyz\nzyx"` will result in:
+
+    foo: <value_of_foo>
+    xyz\nzyx
+
+The escape sequences are identical with Lua's otherwise.
 #### Blocks and chunks
     ident_list ::= ident { ',' ident }
     expr_list  ::= expr  { ',' expr  }
@@ -275,7 +263,7 @@ pattern matching form, described later in the part about pattern matching.
     expr ::= 'yield' ( expr | ( '(' [ expr_list ] ')' ) ) | seq_expr
 Sequences evaluate to zero or more values using yielding. Given an expression:
 
-    let a, b, c = seq { for i in range(1, 3) -> yield i }
+    let (a, b, c) = seq { for i in range(1, 3) -> yield i }
 
 `a` will be `1`, `b` will be `2` and `c` will be `3`.
 Sequences are coroutines implementation-wise. They are resumed as long as they
