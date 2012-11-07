@@ -114,7 +114,7 @@ local Function_State = Scope:clone {
 
 local gen_str = function(str, level)
     local ind = ("="):rep(level or 0)
-    return concat { "[", ind, "[", str, "]", ind, "]" }
+    return concat { "([", ind, "[", str, "]", ind, "])" }
 end
 
 local gen_local = function(names, vals)
@@ -300,9 +300,6 @@ local Index_Expr = Expr:clone {
         local ex, iex
         if self.iexpr:is_a(Value_Expr) then
             iex = self.iexpr:generate(sc, {})
-            if self.iexpr:is_tag(TAG_STRING) then
-                iex = "(" .. iex .. ")"
-            end
         else
             local sym = unique_sym("index")
             sc:push(gen_local(sym, self.iexpr:generate(sc, {})))
@@ -585,16 +582,14 @@ local Table_Expr = Expr:clone {
                     kvs[#kvs + 1] = sym
                 end
             elseif ke:is_a(Value_Expr) then
-                local kv = ke:is_tag(TAG_STRING)
-                    and ("(" .. ke:generate(sc, {}) .. ")")
-                    or ke:generate(sc, {})
                 if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = gen_ass("[" .. kv .. "]",
+                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
                         ve:generate(sc, {}))
                 else
                     local sym = unique_sym("map")
                     sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. kv .. "]", sym)
+                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
+                        sym)
                 end
             else
                 local ksym = unique_sym("key")
