@@ -145,7 +145,7 @@ let fun = fn args... ->
 assert(fun(1, 2, 3)[3] == 6)
 
 // hybrid prototype/class object system with differential inheritance
-let Foo = clone Object [
+let Foo = clone [
     __init = fn self, x {
         self.x = x
     },
@@ -158,7 +158,7 @@ let Bar = clone Foo [
         Foo.boo(self)
     }
 ]
-let inst = Bar(5)
+let inst = new Bar(5)
 inst:boo()</pre>
         </div>
         <br class="sep"/>
