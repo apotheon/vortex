@@ -144,22 +144,30 @@ let fun = fn args... ->
     [ seq -> for k, v in pairs(args) -> yield v * 2 ]
 assert(fun(1, 2, 3)[3] == 6)
 
-// hybrid prototype/class object system with differential inheritance
+// hybrid prototype/class object system with multiple differential inheritance
+// if you're inheriting from Object, you don't specify it
 let Foo = clone [
     __init = fn self, x {
         self.x = x
-    },
+    }
 
     boo = fn self -> print("boo!", self.x)
 ]
-let Bar = clone Foo [
+
+let Bar = clone [
+    baa = fn self -> print("baa!", self.x)
+]
+
+let Baz = clone (Foo, Bar) [
     boo = fn self {
         print("new boo!")
         Foo.boo(self)
     }
 ]
-let inst = new Bar(5)
-inst:boo()</pre>
+
+let inst = new Baz(5)
+inst:boo()
+inst:baa()</pre>
         </div>
         <br class="sep"/>
         <div class="box">
