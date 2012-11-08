@@ -2298,13 +2298,13 @@ local parse_object = function(ls)
         el = parse_exprlist(ls, true)
         assert_tok(ls, ")")
         ls:get()
-    elseif tok.name ~= "[" then
-        el = { parse_primaryexpr(ls, true) }
+    elseif tok.name ~= "{" then
+        el = { parse_expr(ls, true) }
     end
 
-    assert_tok(ls, "[")
+    assert_tok(ls, "{")
     ls:get()
-    if tok.name == "]" then
+    if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, "obj_def", true) }, {})
@@ -2326,9 +2326,9 @@ local parse_object = function(ls)
         if tok.name == "," then
             ls:get()
         end
-    until tok.name == "]"
+    until tok.name == "}"
 
-    assert_tok(ls, "]")
+    assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, "obj_def", true) }, tbl)
