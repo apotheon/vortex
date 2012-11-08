@@ -73,6 +73,10 @@ local assert_check = function(ls, cond, msg)
     end
 end
 
+local push_curline = function(ls)
+    ls.ndstack:push({ first_line = ls.line_number })
+end
+
 local concat = table.concat
 
 local Scope = util.Object:clone {
@@ -268,14 +272,15 @@ local Value_Expr
 local Symbol_Expr = Expr:clone {
     name = "Symbol_Expr",
 
-    __init = function(self, ps, sym)
+    __init = function(self, ps, sym, rt)
         Expr.__init(self, ps)
-        self.symbol = sym
+        self.symbol, self.rt = sym, rt or false
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        return self.symbol
+        local sym = self.symbol
+        return self.rt and get_rt_fun(sym) or sym
     end,
 
     is_lvalue = function(self)
@@ -565,6 +570,7 @@ local Table_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
         local tbl = self.contents
 
         sc.indent = sc.indent + 1
@@ -631,6 +637,52 @@ local Table_Expr = Expr:clone {
                 .. "\n" .. gen_indent(i) .. "}"
         end
         return ("Table_Expr(%s, %s)"):format(array, assarr)
+    end
+}
+
+local Object_Expr = Expr:clone {
+    name = "Object_Expr",
+
+    __init = function(self, ps, parent, body)
+        Expr.__init(self, ps)
+        self.parent, self.body = parent, body
+    end,
+
+    generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
+
+        local par, body = self.parent, self.body
+        par = par:generate(sc, {})
+
+        local fun, kvs = get_rt_fun("obj_clone"), {}
+        for i = 1, #body do
+            local pair = body[i]
+            local ke, ve = pair[1], pair[2]
+            if ke:is_a(Value_Expr) then
+                if i == len or ve:is_a(Value_Expr) then
+                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
+                        ve:generate(sc, {}))
+                else
+                    local sym = unique_sym("obj")
+                    sc:push(gen_local(sym, ve:generate(sc, {})))
+                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
+                        sym)
+                end
+            else
+                local ksym = unique_sym("key")
+                sc:push(gen_local(ksym, ke:generate(sc, {})))
+                if i == len or ve:is_a(Value_Expr) then
+                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
+                        ve:generate(sc, {}))
+                else
+                    local sym = unique_sym("map")
+                    sc:push(gen_local(sym, ve:generate(sc, {})))
+                    kvs[#kvs + 1] = gen_ass("[" .. sym .. "]",
+                        sym)
+                end
+            end
+        end
+        return gen_call(fun, gen_seq({ par, gen_table(sc, kvs) }))
     end
 }
 
@@ -1509,23 +1561,20 @@ local Quote_Expr = Expr:clone {
 Call_Expr = Expr:clone {
     name = "Call_Expr",
 
-    __init = function(self, ps, expr, params, method, rt)
+    __init = function(self, ps, expr, params, method)
         Expr.__init(self, ps)
-        self.expr, self.params, self.method, self.rt = expr, params,
-            method or false, rt or false
+        self.expr, self.params, self.method = expr, params,
+            method or false
     end,
 
     generate = function(self, sc, kwargs)
         local syms = {}
         local len  = #self.params
-        local method, rt = self.method, self.rt
+        local method = self.method
 
         local expr, slf = self.expr:generate(sc, {})
         if method then
             syms[1] = slf
-        end
-        if rt then
-            expr = get_rt_fun(expr)
         end
         local off = method and 1 or 0
         for i = 1, len do
@@ -1634,7 +1683,7 @@ local parse_arglist = function(ls)
 end
 
 local parse_block = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local tok, exprs = ls.token, {}
 
@@ -1659,7 +1708,7 @@ local parse_block = function(ls)
             local el = parse_exprlist(ls)
             assert_tok(ls, ")")
             ls:get()
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             assert_tok(ls, "}")
             ls:get()
             return Block_Expr(ls, exprs, Pack_Expr(ls, el))
@@ -1677,7 +1726,7 @@ local parse_block = function(ls)
 end
 
 local parse_table = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local tok, tbl = ls.token, {}
 
@@ -1720,7 +1769,7 @@ local parse_table = function(ls)
 end
 
 local parse_match = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local el  = parse_exprlist(ls)
     local tok = ls.token
@@ -1747,7 +1796,7 @@ local parse_match_body
 
 local parse_function = function(ls)
     local tok = ls.token
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
 
     local ids, defs = parse_arglist(ls)
@@ -1756,7 +1805,7 @@ local parse_function = function(ls)
     if tok.name == "{" then
         local lah, body = ls:lookahead()
         if lah == "|" or lah == "case" then
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             local el = {}
             for i = 1, #ids do
                 local n = ids[i]
@@ -1777,7 +1826,7 @@ local parse_function = function(ls)
 
     local n = tok.name
     if n == "|" or n == "case" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local el = {}
         for i = 1, #ids do
             local n = ids[i]
@@ -1791,7 +1840,7 @@ local parse_function = function(ls)
         local el = parse_exprlist(ls)
         assert_tok(ls, ")")
         ls:get()
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         return Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
     end
 
@@ -1799,7 +1848,7 @@ local parse_function = function(ls)
 end
 
 local parse_sequence = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     ls.fnstack:push({ vararg = false })
 
@@ -1816,7 +1865,7 @@ local parse_sequence = function(ls)
         local el = parse_exprlist(ls)
         assert_tok(ls, ")")
         ls:get()
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         return Seq_Expr(ls, Pack_Expr(ls, el))
     end
 
@@ -1824,7 +1873,7 @@ local parse_sequence = function(ls)
 end
 
 local parse_quote = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
 
     local tok = ls.token
@@ -1840,7 +1889,7 @@ local parse_quote = function(ls)
         local el = parse_exprlist(ls)
         assert_tok(ls, ")")
         ls:get()
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         return Quote_Expr(ls, Pack_Expr(ls, el))
     end
 
@@ -1848,7 +1897,7 @@ local parse_quote = function(ls)
 end
 
 local parse_if = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local cond = parse_expr(ls)
     local tok  = ls.token
@@ -1865,7 +1914,7 @@ local parse_if = function(ls)
             local el = parse_exprlist(ls)
             assert_tok(ls, ")")
             ls:get()
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             tval = Pack_Expr(ls, el)
         else
             tval = parse_expr(ls)
@@ -1885,7 +1934,7 @@ local parse_if = function(ls)
                 local el = parse_exprlist(ls)
                 assert_tok(ls, ")")
                 ls:get()
-                ls.ndstack:push({ first_line = ls.line_number })
+                push_curline(ls)
                 return If_Expr(ls, cond, tval, Pack_Expr(ls, el))
             else
                 return If_Expr(ls, cond, tval, parse_expr(ls))
@@ -1923,19 +1972,19 @@ local parse_pattern = function(ls, let)
     local tn  = tok.name
     if (tn == "$" or tn == "<string>" or tn == "<number>"
     or  tn == "true" or tn == "false" or tn == "nil") and not let then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local exp
         if tn == "$" then
             exp = parse_expr(ls)
         else
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             local v = tok.value or tn
             ls:get()
             exp = Value_Expr(ls, to_tag(tn), v)
         end
         return Expr_Pattern(ls, exp, parse_as(ls), parse_when(ls))
     elseif tn == "<ident>" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local v = tok.value
         ls:get()
         if v == "_" then
@@ -1953,7 +2002,7 @@ local parse_pattern = function(ls, let)
 end
 
 parse_table_pattern = function(ls, let)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local tok, tbl = ls.token, {}
 
@@ -2013,7 +2062,7 @@ end
 parse_patternprec = function(ls, mp)
     local curr = ls.ndstack
     local len = #curr
-    curr:push({ first_line = ls.line_number })
+    push_curline(ls)
     mp = mp or 1
     local lhs = parse_subpattern(ls)
     while true do
@@ -2023,7 +2072,7 @@ parse_patternprec = function(ls, mp)
         ls:get()
         local rhs = parse_patternprec(ls, t[1])
         lhs = t[2](ls, lhs, rhs)
-        curr:push({ first_line = ls.line_number })
+        push_curline(ls)
     end
     for i = 1, #curr - len do curr:pop() end
     return lhs
@@ -2055,7 +2104,7 @@ parse_match_body = function(ls)
                 local el = parse_exprlist(ls)
                 assert_tok(ls, ")")
                 ls:get()
-                ls.ndstack:push({ first_line = ls.line_number })
+                push_curline(ls)
                 body = Pack_Expr(ls, el)
             else
                 body = parse_expr(ls)
@@ -2067,7 +2116,7 @@ parse_match_body = function(ls)
 end
 
 local parse_match = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local el  = parse_exprlist(ls)
     local tok = ls.token
@@ -2091,7 +2140,7 @@ local parse_match = function(ls)
 end
 
 local parse_while = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local cond = parse_expr(ls)
     local tok  = ls.token
@@ -2109,7 +2158,7 @@ local parse_while = function(ls)
 end
 
 local parse_dowhile = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local body
     local tok = ls.token
@@ -2126,7 +2175,7 @@ local parse_dowhile = function(ls)
 end
 
 local parse_for = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     local tok, ident, body, ids, exprs, first, last, step = ls.token
     assert_tok(ls, "<ident>")
@@ -2171,7 +2220,7 @@ local parse_for = function(ls)
 end
 
 local parse_return = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     if ls.token.name == "(" then
         ls:get()
@@ -2184,7 +2233,7 @@ local parse_return = function(ls)
 end
 
 local parse_yield = function(ls)
-    ls.ndstack:push({ first_line = ls.line_number })
+    push_curline(ls)
     ls:get()
     if ls.token.name == "(" then
         ls:get()
@@ -2194,6 +2243,44 @@ local parse_yield = function(ls)
         return Yield_Expr(ls, exprs)
     end
     return Yield_Expr(ls, { parse_expr(ls) })
+end
+
+local parse_object = function(ls)
+    push_curline(ls)
+    ls:get()
+    local tok, parent = ls.token
+    if tok.name == "<ident>" then
+        push_curline(ls)
+        parent = tok.value
+        ls:get()
+    end
+    assert_tok(ls, "[")
+    ls:get()
+    if tok.name == "]" then
+        ls:get()
+        return Object_Expr(ls, parent and Symbol_Expr(ls, parent)
+            or Symbol_Expr(nil, "obj_def", true), {})
+    end
+
+    local tbl = {}
+    repeat
+        local kexpr
+        if tok.name == "<ident>" then
+            kexpr = Value_Expr(nil, TAG_STRING, tok.value)
+            ls:get()
+        else
+            assert_tok(ls, "$")
+            kexpr = parse_expr(ls)
+        end
+        assert_tok(ls, "=")
+        ls:get()
+        tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
+    until tok.name == "]"
+
+    assert_tok(ls, "]")
+    ls:get()
+    return Object_Expr(ls, parent and Symbol_Expr(ls, parent)
+        or Symbol_Expr(nil, "obj_def", true), tbl)
 end
 
 local parse_binexpr
@@ -2209,7 +2296,7 @@ local parse_primaryexpr = function(ls)
         ls:get()
         return exp
     elseif tok.name == "<ident>" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local v = tok.value
         ls:get()
         return Symbol_Expr(ls, v)
@@ -2225,14 +2312,14 @@ local parse_suffixedexpr = function(ls)
     while true do
         if tok.name == "." or tok.name == ":" then
             local mcall = (tok.name == ":")
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             ls:get()
             assert_tok(ls, "<ident>")
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             local s = tok.value
             ls:get()
             if mcall then
-                ls.ndstack:push({ first_line = ls.line_number })
+                push_curline(ls)
                 assert_tok(ls, "(")
                 ls:get()
                 local el
@@ -2250,14 +2337,14 @@ local parse_suffixedexpr = function(ls)
                 exp = Index_Expr(ls, exp, Value_Expr(ls, TAG_STRING, s))
             end
         elseif tok.name == "[" then
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             ls:get()
             local e = parse_expr(ls)
             assert_tok(ls, "]")
             ls:get()
             exp = Index_Expr(ls, exp, e)
         elseif tok.name == "(" then
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             ls:get()
             local el
             if tok.name == ")" then
@@ -2282,7 +2369,7 @@ local parse_simpleexpr = function(ls)
     if name == "fn" then
         return parse_function(ls)
     elseif name == "let" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
 
         local ltype
@@ -2333,35 +2420,37 @@ local parse_simpleexpr = function(ls)
         return parse_return(ls)
     elseif name == "yield" then
         return parse_yield(ls)
+    elseif name == "clone" then
+        return parse_object(ls)
     elseif name == "{" then
         return parse_block(ls)
     elseif name == "[" then
         return parse_table(ls)
     elseif name == "__FILE__" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
         return Value_Expr(ls, TAG_STRING, ls.source)
     elseif name == "__LINE__" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
         return Value_Expr(ls, TAG_NUMBER, ls.line_number)
     elseif name == "..." then
         assert_check(ls, ls.fnstack:top().vararg,
             "cannot use '...' outside a vararg function")
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
         return Vararg_Expr(ls)
     elseif Unary_Ops[tok] then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
         return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
     elseif name == "<number>" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local v = tok.value
         ls:get()
         return Value_Expr(ls, TAG_NUMBER, v)
     elseif name == "<string>" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         local exprs, levels, v = { true }, {}
         repeat
             v = v and (v .. tok.value) or tok.value
@@ -2381,14 +2470,13 @@ local parse_simpleexpr = function(ls)
             level = level + 1
         end
         if #exprs > 1 then
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             exprs[1] = Value_Expr(ls, TAG_STRING, v, level)
-            return Call_Expr(ls, Symbol_Expr(nil, "str_fmt"), exprs,
-                false, true)
+            return Call_Expr(ls, Symbol_Expr(nil, "str_fmt", true), exprs)
         end
         return Value_Expr(ls, TAG_STRING, v, level)
     elseif name == "nil" or name == "true" or name == "false" then
-        ls.ndstack:push({ first_line = ls.line_number })
+        push_curline(ls)
         ls:get()
         return Value_Expr(ls, to_tag(name), name)
     else
@@ -2399,7 +2487,7 @@ end
 parse_binexpr = function(ls, mp)
     local curr = ls.ndstack
     local len = #curr
-    curr:push({ first_line = ls.line_number })
+    push_curline(ls)
     mp = mp or 1
     local lhs = parse_simpleexpr(ls)
     while true do
@@ -2418,7 +2506,7 @@ parse_binexpr = function(ls, mp)
         local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
 
         lhs = Binary_Expr(ls, op, lhs, rhs)
-        curr:push({ first_line = ls.line_number })
+        push_curline(ls)
     end
     for i = 1, #curr - len do curr:pop() end
     return lhs
@@ -2429,7 +2517,7 @@ parse_expr = function(ls)
     if tok.name == "$" then
         ls:get()
         if tok.name == "<ident>" then
-            ls.ndstack:push({ first_line = ls.line_number })
+            push_curline(ls)
             local v = tok.value
             ls:get()
             return Symbol_Expr(ls, v)

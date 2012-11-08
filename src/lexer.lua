@@ -20,16 +20,40 @@ local fatal        = util.fatal
 
 -- all of the core vortex keywords
 local keywords = {
-    ["again" ] = true, ["and"  ] = true, ["as"   ] = true, ["break" ] = true,
-    ["case"  ] = true, ["cfn"  ] = true, ["coro" ] = true, ["do"    ] = true,
-    ["else"  ] = true, ["false"] = true, ["fn"   ] = true, ["for"   ] = true,
-    ["glob"  ] = true, ["goto" ] = true, ["if"   ] = true, ["in"    ] = true,
-    ["let"   ] = true, ["match"] = true, ["mod"  ] = true, ["nil"   ] = true,
-    ["not"   ] = true, ["or"   ] = true, ["quote"] = true, ["rec"   ] = true,
-    ["return"] = true, ["seq"  ] = true, ["true" ] = true, ["when"  ] = true,
-    ["while" ] = true, ["yield"] = true,
+    ["again" ] = true,
+    ["and"   ] = true,
+    ["as"    ] = true,
+    ["break" ] = true,
+    ["case"  ] = true,
+    ["cfn"   ] = true,
+    ["clone" ] = true,
+    ["coro"  ] = true,
+    ["do"    ] = true,
+    ["else"  ] = true,
+    ["false" ] = true,
+    ["fn"    ] = true,
+    ["for"   ] = true,
+    ["glob"  ] = true,
+    ["goto"  ] = true,
+    ["if"    ] = true,
+    ["in"    ] = true,
+    ["let"   ] = true,
+    ["match" ] = true,
+    ["mod"   ] = true,
+    ["nil"   ] = true,
+    ["not"   ] = true,
+    ["or"    ] = true,
+    ["quote" ] = true,
+    ["rec"   ] = true,
+    ["return"] = true,
+    ["seq"   ] = true,
+    ["true"  ] = true,
+    ["when"  ] = true,
+    ["while" ] = true,
+    ["yield" ] = true,
 
-    ["__FILE__"] = true, ["__LINE__"] = true
+    ["__FILE__"] = true,
+    ["__LINE__"] = true
 }
 
 local lex_error = function(ls, msg, value)

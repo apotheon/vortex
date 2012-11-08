@@ -9,5 +9,6 @@ require "rt.env"
 require "rt.table"
 require "rt.seq"
 require "rt.defenv"
+require "rt.object"
 
 return M
