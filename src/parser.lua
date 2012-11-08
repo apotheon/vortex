@@ -643,16 +643,25 @@ local Table_Expr = Expr:clone {
 local Object_Expr = Expr:clone {
     name = "Object_Expr",
 
-    __init = function(self, ps, parent, body)
+    __init = function(self, ps, parents, body)
         Expr.__init(self, ps)
-        self.parent, self.body = parent, body
+        self.parents, self.body = parents, body
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
 
-        local par, body = self.parent, self.body
-        par = par:generate(sc, {})
+        local pars, body = self.parents, self.body
+        local syms, len = {}, #pars
+        for i = 1, len do
+            if i == len then
+                syms[i] = pars[i]:generate(sc, {})
+            else
+                local sym = unique_sym("par")
+                sc:push(gen_local(sym, pars[i]:generate(sc, {})))
+                syms[i] = sym
+            end
+        end
 
         local fun, kvs = get_rt_fun("obj_clone"), {}
         for i = 1, #body do
@@ -682,7 +691,7 @@ local Object_Expr = Expr:clone {
                 end
             end
         end
-        return gen_call(fun, gen_seq({ gen_table(sc, kvs), par }))
+        return gen_call(fun, gen_seq({ gen_table(sc, kvs), gen_seq(syms) }))
     end
 }
 
@@ -2276,21 +2285,29 @@ local parse_yield = function(ls)
     return Yield_Expr(ls, { parse_expr(ls) })
 end
 
+local parse_primaryexpr
+
 local parse_object = function(ls)
     push_curline(ls)
     ls:get()
     local tok, parent = ls.token
-    if tok.name == "<ident>" then
-        push_curline(ls)
-        parent = tok.value
+
+    local el
+    if tok.name == "(" then
         ls:get()
+        el = parse_exprlist(ls, true)
+        assert_tok(ls, ")")
+        ls:get()
+    elseif tok.name ~= "[" then
+        el = { parse_primaryexpr(ls, true) }
     end
+
     assert_tok(ls, "[")
     ls:get()
     if tok.name == "]" then
         ls:get()
-        return Object_Expr(ls, parent and Symbol_Expr(ls, parent)
-            or Symbol_Expr(nil, "obj_def", true), {})
+        return Object_Expr(ls, el and el or {
+            Symbol_Expr(nil, "obj_def", true) }, {})
     end
 
     local tbl = {}
@@ -2313,11 +2330,9 @@ local parse_object = function(ls)
 
     assert_tok(ls, "]")
     ls:get()
-    return Object_Expr(ls, parent and Symbol_Expr(ls, parent)
-        or Symbol_Expr(nil, "obj_def", true), tbl)
+    return Object_Expr(ls, el and el or {
+            Symbol_Expr(nil, "obj_def", true) }, tbl)
 end
-
-local parse_primaryexpr
 
 local parse_new = function(ls)
     push_curline(ls)
