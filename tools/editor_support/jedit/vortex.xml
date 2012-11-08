@@ -130,6 +130,7 @@
             <KEYWORD1>break</KEYWORD1>
             <KEYWORD1>case</KEYWORD1>
             <KEYWORD1>cfn</KEYWORD1>
+            <KEYWORD1>clone</KEYWORD1>
             <KEYWORD1>coro</KEYWORD1>
             <KEYWORD1>do</KEYWORD1>
             <KEYWORD1>else</KEYWORD1>
@@ -143,6 +144,7 @@
             <KEYWORD1>let</KEYWORD1>
             <KEYWORD1>match</KEYWORD1>
             <KEYWORD1>module</KEYWORD1>
+            <KEYWORD1>new</KEYWORD1>
             <KEYWORD3>nil</KEYWORD3>
             <KEYWORD1>not</KEYWORD1>
             <KEYWORD1>or</KEYWORD1>

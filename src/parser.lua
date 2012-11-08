@@ -682,7 +682,38 @@ local Object_Expr = Expr:clone {
                 end
             end
         end
-        return gen_call(fun, gen_seq({ par, gen_table(sc, kvs) }))
+        return gen_call(fun, gen_seq({ gen_table(sc, kvs), par }))
+    end
+}
+
+local New_Expr = Expr:clone {
+    name = "New_Expr",
+
+    __init = function(self, ps, expr, exprlist)
+        Expr.__init(self, ps)
+        self.expr, self.exprlist = expr, exprlist
+    end,
+
+    generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
+
+        local fun = get_rt_fun("obj_new")
+        local expr, el = self.expr, self.exprlist
+        local sym = unique_sym("new")
+        sc:push(gen_local(sym, expr:generate(sc, {})))
+
+        local len, t = #el, { sym }
+        for i = 1, len do
+            local exp = el[i]
+            if i == len or exp:is_a(Value_Expr) then
+                t[i + 1] = exp:generate(sc, {})
+            else
+                local sym = unique_sym("ctor")
+                sc:push(gen_local(sym, exp:generate(sc, {})))
+                t[i + 1] = sym
+            end
+        end
+        return gen_call(fun, gen_seq(t))
     end
 }
 
@@ -2275,6 +2306,9 @@ local parse_object = function(ls)
         assert_tok(ls, "=")
         ls:get()
         tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
+        if tok.name == "," then
+            ls:get()
+        end
     until tok.name == "]"
 
     assert_tok(ls, "]")
@@ -2283,9 +2317,24 @@ local parse_object = function(ls)
         or Symbol_Expr(nil, "obj_def", true), tbl)
 end
 
+local parse_primaryexpr
+
+local parse_new = function(ls)
+    push_curline(ls)
+    ls:get()
+    local tok = ls.token
+    local pex = parse_primaryexpr(ls)
+    assert_tok(ls, "(")
+    ls:get()
+    local el = parse_exprlist(ls)
+    assert_tok(ls, ")")
+    ls:get()
+    return New_Expr(ls, pex, el)
+end
+
 local parse_binexpr
 
-local parse_primaryexpr = function(ls)
+parse_primaryexpr = function(ls)
     local tok = ls.token
     if tok.name == "(" then
         ls:get()
@@ -2422,6 +2471,8 @@ local parse_simpleexpr = function(ls)
         return parse_yield(ls)
     elseif name == "clone" then
         return parse_object(ls)
+    elseif name == "new" then
+        return parse_new(ls)
     elseif name == "{" then
         return parse_block(ls)
     elseif name == "[" then

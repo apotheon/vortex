@@ -40,6 +40,7 @@ local keywords = {
     ["let"   ] = true,
     ["match" ] = true,
     ["mod"   ] = true,
+    ["new"   ] = true,
     ["nil"   ] = true,
     ["not"   ] = true,
     ["or"    ] = true,
