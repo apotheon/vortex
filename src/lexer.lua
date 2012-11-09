@@ -12,7 +12,6 @@ local is_newline   = util.is_newline
 local is_white     = util.is_white
 local is_ascii     = util.is_ascii
 local is_ident     = util.is_ident
-local is_keyword   = util.is_keyword
 local is_alnum     = util.is_alnum
 local is_digit     = util.is_digit
 local is_hex_digit = util.is_hex_digit 
@@ -520,7 +519,7 @@ lex = function(ls, token)
         -- keywords, identifiers, single-char tokens
         else
             -- keyword or identifier
-            if is_ident(curr) or is_keyword(curr) then
+            if is_ident(curr) then
                 local buf = { curr }
                 next_char(ls)
 
@@ -532,8 +531,7 @@ lex = function(ls, token)
                 end
                 local strp = raw ~= 0 or expand ~= 0
 
-                while ls.current and
-                    (is_ident(ls.current) or is_keyword(ls.current)) do
+                while ls.current and is_ident(ls.current) do
                     if strp then
                         local curr = ls.current
                         if curr == "e" or curr == "E" then

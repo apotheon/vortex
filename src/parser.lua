@@ -686,7 +686,7 @@ local Object_Expr = Expr:clone {
                 else
                     local sym = unique_sym("map")
                     sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. sym .. "]",
+                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
                         sym)
                 end
             end
@@ -1657,6 +1657,8 @@ Call_Expr = Expr:clone {
 
 local parse_expr
 local parse_exprlist
+local parse_pattern_list
+local parse_pattern
 
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
@@ -1676,20 +1678,20 @@ parse_exprlist = function(ls)
 end
 
 local endargs = { ["<ident>"] = true, ["..."] = true }
-local parse_arglist = function(ls)
+local parse_arglist = function(ls, first)
     local tok = ls.token
     local tn  = tok.name
 
     if tn == "->" or tn == "{" then
-        return {}, {}
+        return { first }, {}
     end
 
     if tn == "..." then
         ls:get()
-        return { "..." }, {}
+        return (first and { first, "..." } or { "..." }), {}
     end
 
-    local ids, defs = {}
+    local ids, defs = { first }
     repeat
         if tok.name == "..." then
             ids[#ids + 1] = "..."
@@ -1834,12 +1836,109 @@ end
 
 local parse_match_body
 
-local parse_function = function(ls)
+local parse_function = function(ls, obj)
     local tok = ls.token
     push_curline(ls)
     ls:get()
 
-    local ids, defs = parse_arglist(ls)
+    local ltype
+    if tok.name == "rec" or tok.name == "glob" then
+        if obj then
+            assert_tok(ls, "<ident>")
+        end
+        ltype = tok.name
+        ls:get()
+    end
+
+    local noself
+    if obj and tok.name == "@" then
+        ls:get()
+        noself = true
+    end
+
+    local tbl, slf, name, ids, defs
+    if tok.name == "<ident>" then
+        local lah = ls:lookahead()
+        if lah == "(" then
+            push_curline(ls)
+            if not obj then
+                push_curline(ls)
+            end
+            name = tok.value
+            ls:get()
+            ls:get()
+            if tok.name == ")" then
+                ids, defs = { (obj and not noself) and "self" or nil }, {}
+                ls:get()
+            else
+                ids, defs = parse_arglist(ls, (obj and not noself)
+                    and "self" or nil)
+                assert_tok(ls, ")")
+                ls:get()
+            end
+        elseif lah == ":" or lah == "." then
+            if obj then
+                ls:get()
+                assert_tok(ls, "(")
+            end
+            if ltype then
+                syntax_error(ls, "method with '" .. ltype .. "'")
+            end
+            push_curline(ls)
+            if not obj then
+                push_curline(ls)
+                push_curline(ls)
+                push_curline(ls)
+            end
+            tbl, slf = tok.value, (lah == ":" and true or false)
+            ls:get()
+            ls:get()
+            assert_tok(ls, "<ident>")
+            name = tok.value
+            ls:get()
+            assert_tok(ls, "(")
+            ls:get()
+            if tok.name == ")" then
+                ids, defs = { slf and "self" or nil }, {}
+                ls:get()
+            else
+                ids, defs = parse_arglist(ls, slf and "self" or nil)
+                assert_tok(ls, ")")
+                ls:get()
+            end
+        elseif not ltype then
+            if obj then
+                ls:get()
+                assert_tok(ls, "(")
+            end
+            local v = tok.value
+            ls:get()
+            if tok.name == "..." then
+                ls:get()
+                ids, defs = { v }, { "..." }
+            elseif tok.name ~= "," then
+                ids, defs = { v }, {}
+            else
+                ls:get()
+                ids, defs = parse_arglist(ls, v)
+            end
+        else
+            ls:get()
+            assert_tok(ls, "(")
+        end
+    elseif not ltype then
+        if obj then
+            assert_tok(ls, "<ident>")
+        end
+        assert_tok(ls, "(")
+        ls:get()
+        ids, defs = parse_arglist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+    else
+        assert_tok(ls, "<ident>")
+    end
+
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
 
     if tok.name == "{" then
@@ -1858,13 +1957,26 @@ local parse_function = function(ls)
         else
             body = parse_block(ls)
         end
-        return Function_Expr(ls, ids, defs, body)
+        local fnexpr = Function_Expr(ls, ids, defs, body)
+        if name then
+            if obj then
+                return Value_Expr(ls, TAG_STRING, name), fnexpr
+            elseif tbl then
+                return Binary_Expr(ls, "=", Index_Expr(ls,
+                    Symbol_Expr(ls, tbl), Value_Expr(ls, TAG_STRING, name)),
+                        fnexpr)
+            else
+                return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
+                    { fnexpr })
+            end
+        end
+        return fnexpr
     end
 
     assert_tok(ls, "->")
     ls:get()
 
-    local n = tok.name
+    local n, fnexpr = tok.name
     if n == "|" or n == "case" then
         push_curline(ls)
         local el = {}
@@ -1873,7 +1985,7 @@ local parse_function = function(ls)
             if n == "..." then break end
             el[i] = Symbol_Expr(nil, n)
         end
-        return Function_Expr(ls, ids, defs,
+        fnexpr = Function_Expr(ls, ids, defs,
             Match_Expr(ls, el, parse_match_body(ls)))
     elseif n == "(" then
         ls:get()
@@ -1881,10 +1993,61 @@ local parse_function = function(ls)
         assert_tok(ls, ")")
         ls:get()
         push_curline(ls)
-        return Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
+        fnexpr = Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
+    else
+        fnexpr = Function_Expr(ls, ids, defs, parse_expr(ls))
     end
 
-    return Function_Expr(ls, ids, defs, parse_expr(ls))
+    if name then
+        if obj then
+            return Value_Expr(ls, TAG_STRING, name), fnexpr
+        elseif tbl then
+            return Binary_Expr(ls, "=", Index_Expr(ls,
+                Symbol_Expr(ls, tbl), Value_Expr(ls, TAG_STRING, name)),
+                    fnexpr)
+        else
+            return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
+                { fnexpr })
+        end
+    end
+    return fnexpr
+end
+
+local parse_let = function(ls)
+    local tok = ls.token
+    push_curline(ls)
+    ls:get()
+
+    local ltype
+    if tok.name == "rec" or tok.name == "glob" then
+        ltype = tok.name
+        ls:get()
+    end
+
+    local ptrns
+    if tok.name == "(" then
+        ls:get()
+        ptrns = parse_pattern_list(ls, true)
+        assert_tok(ls, ")")
+        ls:get()
+    else
+        ptrns = { parse_pattern(ls, true) }
+    end
+
+    local exprs
+    if tok.name == "=" then
+        ls:get()
+        if tok.name == "(" then
+            ls:get()
+            exprs = parse_exprlist(ls)
+            assert_tok(ls, ")")
+            ls:get()
+        else
+            exprs = { parse_expr(ls) }
+        end
+    end
+
+    return Let_Expr(ls, ltype, ptrns, exprs)
 end
 
 local parse_sequence = function(ls)
@@ -2007,7 +2170,7 @@ end
 
 local parse_table_pattern
 
-local parse_pattern = function(ls, let)
+parse_pattern = function(ls, let)
     local tok = ls.token
     local tn  = tok.name
     if (tn == "$" or tn == "<string>" or tn == "<number>"
@@ -2118,7 +2281,7 @@ parse_patternprec = function(ls, mp)
     return lhs
 end
 
-local parse_pattern_list = function(ls, let)
+parse_pattern_list = function(ls, let)
     local tok, ptrns = ls.token, {}
     repeat
         ptrns[#ptrns + 1] = let and parse_pattern(ls, let)
@@ -2312,17 +2475,21 @@ local parse_object = function(ls)
 
     local tbl = {}
     repeat
-        local kexpr
-        if tok.name == "<ident>" then
-            kexpr = Value_Expr(nil, TAG_STRING, tok.value)
+        if tok.name == "fn" then
+            tbl[#tbl + 1] = { parse_function(ls, true) }
+        elseif tok.name == "<ident>" then
+            local kexpr = Value_Expr(nil, TAG_STRING, tok.value)
             ls:get()
+            assert_tok(ls, "=")
+            ls:get()
+            tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         else
             assert_tok(ls, "$")
-            kexpr = parse_expr(ls)
+            local kexpr = parse_expr(ls)
+            assert_tok(ls, "=")
+            ls:get()
+            tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         end
-        assert_tok(ls, "=")
-        ls:get()
-        tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         if tok.name == "," then
             ls:get()
         end
@@ -2433,39 +2600,7 @@ local parse_simpleexpr = function(ls)
     if name == "fn" then
         return parse_function(ls)
     elseif name == "let" then
-        push_curline(ls)
-        ls:get()
-
-        local ltype
-        if tok.name == "rec" or tok.name == "glob" then
-            ltype = tok.name
-            ls:get()
-        end
-
-        local ptrns
-        if tok.name == "(" then
-            ls:get()
-            ptrns = parse_pattern_list(ls, true)
-            assert_tok(ls, ")")
-            ls:get()
-        else
-            ptrns = { parse_pattern(ls, true) }
-        end
-
-        local exprs
-        if tok.name == "=" then
-            ls:get()
-            if tok.name == "(" then
-                ls:get()
-                exprs = parse_exprlist(ls)
-                assert_tok(ls, ")")
-                ls:get()
-            else
-                exprs = { parse_expr(ls) }
-            end
-        end
-
-        return Let_Expr(ls, ltype, ptrns, exprs)
+        return parse_let(ls)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "quote" then
