@@ -40,6 +40,9 @@ env.math     = _G.math
 env.os       = _G.os
 env.io       = _G.io
 
+-- Vortex builtin functions
+env.super = M.__vx_obj_super
+
 env._L       = _G
 env._G       = env
 env._R       = M

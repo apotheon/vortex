@@ -161,6 +161,7 @@
             <!-- special names and builtins -->
             <KEYWORD2>assert</KEYWORD2>
             <KEYWORD2>self</KEYWORD2>
+            <KEYWORD2>super</KEYWORD2>
         </KEYWORDS>
     </RULES>
     <RULES SET="NESTED_COMMENT" DEFAULT="COMMENT1">

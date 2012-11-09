@@ -84,3 +84,25 @@ end
 M.__vx_obj_def   = Object
 M.__vx_obj_clone = clone
 M.__vx_obj_new   = new
+
+local Super_MT = {
+    __index = function(self, n)
+        local protos, obj = self.protos, self.obj
+        for i = 1, #protos do
+            local v = protos[i][n]
+            if v ~= nil then
+                return function(inst, ...)
+                    return v((inst == self) and obj or inst, ...)
+                end
+            end
+        end
+    end
+}
+
+M.__vx_obj_super = function(obj, obj2)
+    if obj2 == nil then
+        obj2 = obj
+        obj  = obj.__protos[1]
+    end
+    return setmt({ protos = obj.__protos, obj = obj2 }, Super_MT)
+end

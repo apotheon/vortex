@@ -2498,6 +2498,10 @@ local parse_new = function(ls)
     local pex = parse_primaryexpr(ls)
     assert_tok(ls, "(")
     ls:get()
+    if tok.name == ")" then
+        ls:get()
+        return New_Expr(ls, pex, {})
+    end
     local el = parse_exprlist(ls)
     assert_tok(ls, ")")
     ls:get()
