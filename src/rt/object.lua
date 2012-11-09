@@ -22,15 +22,28 @@ local Object = {
 for i = 1, #Meta do
     local n = Meta[i]
     local mtfn
-    mtfn = function(self, ...)
-        local protos = rawget(self, "__protos")
-        for i = 1, #protos do
-            local v = protos[i][n]
-            if v ~= mtfn then
-                return v(self, ...)
+    if n == "__tostring" then
+        mtfn = function(self, ...)
+            local protos = rawget(self, "__protos")
+            for i = 1, #protos do
+                local v = protos[i][n]
+                if v ~= mtfn then
+                    return v(self, ...)
+                end
             end
+            return "object"
         end
-        error("metamethod not implemented: " .. n)
+    else
+        mtfn = function(self, ...)
+            local protos = rawget(self, "__protos")
+            for i = 1, #protos do
+                local v = protos[i][n]
+                if v ~= mtfn then
+                    return v(self, ...)
+                end
+            end
+            error("metamethod not implemented: " .. n)
+        end
     end
     Object[n] = mtfn
 end
