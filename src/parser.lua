@@ -1682,7 +1682,7 @@ local parse_arglist = function(ls, first)
     local tok = ls.token
     local tn  = tok.name
 
-    if tn == "->" or tn == "{" then
+    if tn == "->" or tn == "{" or tn ~= "<ident>" then
         return { first }, {}
     end
 
@@ -1867,15 +1867,10 @@ local parse_function = function(ls, obj)
             name = tok.value
             ls:get()
             ls:get()
-            if tok.name == ")" then
-                ids, defs = { (obj and not noself) and "self" or nil }, {}
-                ls:get()
-            else
-                ids, defs = parse_arglist(ls, (obj and not noself)
-                    and "self" or nil)
-                assert_tok(ls, ")")
-                ls:get()
-            end
+            ids, defs = parse_arglist(ls, (obj and not noself)
+                and "self" or nil)
+            assert_tok(ls, ")")
+            ls:get()
         elseif lah == ":" or lah == "." then
             if obj then
                 ls:get()
@@ -1898,14 +1893,9 @@ local parse_function = function(ls, obj)
             ls:get()
             assert_tok(ls, "(")
             ls:get()
-            if tok.name == ")" then
-                ids, defs = { slf and "self" or nil }, {}
-                ls:get()
-            else
-                ids, defs = parse_arglist(ls, slf and "self" or nil)
-                assert_tok(ls, ")")
-                ls:get()
-            end
+            ids, defs = parse_arglist(ls, slf and "self" or nil)
+            assert_tok(ls, ")")
+            ls:get()
         elseif not ltype then
             if obj then
                 ls:get()
