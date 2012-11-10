@@ -139,6 +139,8 @@ local gen_binexpr = function(op, lhs, rhs)
     elseif op == "++" then
         local f = get_rt_fun("tbl_join")
         return concat { f, "(", lhs, ", ", rhs, ")" }
+    elseif op == "!=" then
+        op = "~="
     end
     return concat { "(", lhs, " ", op, " ", rhs, ")" }
 end
@@ -747,12 +749,16 @@ Binary_Expr = Expr:clone {
                     self.rhs:generate(sc, {}))))
             end
             sc:push(gen_ass(iv, sym))
-            return sym, av
+            if not kwargs.statement then
+                return sym, av
+            end
         end
 
         local lhs = self.lhs:generate(sc, {})
         local rhs = self.rhs:generate(sc, {})
-        return gen_binexpr(self.op, lhs, rhs)
+        if not kwargs.statement then
+            return gen_binexpr(self.op, lhs, rhs)
+        end
     end,
 
     is_lvalue = function(self)
@@ -1048,6 +1054,7 @@ local Table_Pattern = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        local tfun = get_rt_fun("type")
         local tbl, expr = self.contents, kwargs.expr
         local mn, ret = 0
 
@@ -1086,10 +1093,46 @@ local Table_Pattern = Expr:clone {
 
         local ts = Scope(sc.fstate, sc.indent + 1)
         ts:push(gen_goto(kwargs.next_arm))
-        sc:push(gen_if(gen_binexpr("~=", gen_unexpr("#", expr), mn), ts))
+        sc:push(gen_if(gen_binexpr("or",
+            gen_binexpr("!=", gen_call(tfun, expr), gen_str("table")),
+            gen_binexpr("!=", gen_unexpr("#", expr), mn)), ts))
         sc:merge(ns)
 
         return ret
+    end
+}
+
+local Cons_Pattern = Expr:clone {
+    name = "Cons_Pattern",
+
+    __init = function(self, ps, head, tail, as, cond)
+        Expr.__init(self, ps)
+        self.head, self.tail, self.cond, self.as = head, tail, cond, as
+    end,
+
+    generate = function(self, sc, kwargs)
+        local tfun = get_rt_fun("type")
+        local first, rest = get_rt_fun("list_first"), get_rt_fun("list_rest")
+        local head, tail, expr = self.head, self.tail, kwargs.expr
+
+        if kwargs.decl then
+            sc:push(gen_local(gen_seq({ head, tail })))
+            return nil
+        elseif kwargs.let then
+            local seq = gen_seq({ head, tail })
+            sc:push(gen_local(seq))
+            sc:push(gen_ass(h, gen_call(first, expr)))
+            sc:push(gen_ass(t, gen_call(last,  expr)))
+            return seq
+        end
+
+        local ts = Scope(sc.fstate, sc.indent + 1)
+        ts:push(gen_goto(kwargs.next_arm))
+        sc:push(gen_if(gen_binexpr("!=", gen_call(tfun, expr),
+            gen_str("table")), ts))
+        sc:push(gen_ass(head, gen_call(first, expr)))
+        sc:push(gen_if(gen_binexpr("==", head, "nil"), ts))
+        sc:push(gen_ass(tail, gen_call(rest,  expr)))
     end
 }
 
@@ -1117,14 +1160,9 @@ local Match_Expr = Expr:clone {
         local el = self.exprlist
         local elen, exps = #el, {}
         for i = 1, elen - 1 do
-            local ex = el[i]
-            if ex:is_a(Value_Expr) then
-                exps[i] = ex:generate(sc, {})
-            else
-                local s = unique_sym("expr")
-                sc:push(gen_local(s, ex:generate(sc, {})))
-                exps[i] = s
-            end
+            local s = unique_sym("expr")
+            sc:push(gen_local(s, el[i]:generate(sc, {})))
+            exps[i] = s
         end
         local last = el[elen]
         if last:is_multret() then
@@ -1136,13 +1174,9 @@ local Match_Expr = Expr:clone {
             end
             sc:push(gen_local(lseq, last:generate(sc, {})))
         else
-            if last:is_a(Value_Expr) then
-                exps[elen] = last:generate(sc, {})
-            else
-                local s = unique_sym("expr")
-                sc:push(gen_local(s, last:generate(sc, {})))
-                exps[elen] = s
-            end
+            local s = unique_sym("expr")
+            sc:push(gen_local(s, last:generate(sc, {})))
+            exps[elen] = s
         end
 
         local msym, multret
@@ -1273,7 +1307,7 @@ local Let_Expr = Expr:clone {
             end
         end
         local last = assign[len]
-        if last:is_multret() then
+        if last and last:is_multret() then
             local lseq
             for i = len, plen do
                 local sym = unique_sym("let")
@@ -1281,7 +1315,7 @@ local Let_Expr = Expr:clone {
                 syms[i] = sym
             end
             sc:push(gen_local(lseq, assign[len]:generate(sc, {})))
-        else
+        elseif last then
             if last:is_a(Value_Expr) then
                 syms[len] = last:generate(sc, {})
             else
@@ -2041,6 +2075,8 @@ local parse_let = function(ls)
         else
             exprs = { parse_expr(ls) }
         end
+    else
+        exprs = {}
     end
 
     return Let_Expr(ls, ltype, ptrns, exprs)
@@ -2186,6 +2222,14 @@ parse_pattern = function(ls, let)
         push_curline(ls)
         local v = tok.value
         ls:get()
+        if tok.name == "::" then
+            ls:get()
+            assert_tok(ls, "<ident>")
+            local v2 = tok.value
+            ls:get()
+            return Cons_Pattern(ls, v, v2, parse_as(ls, let),
+                parse_when(ls, let))
+        end
         if v == "_" then
             return Wildcard_Pattern(ls, parse_as(ls, let),
                 parse_when(ls, let))
@@ -2651,10 +2695,10 @@ local parse_simpleexpr = function(ls)
         push_curline(ls)
         ls:get()
         return Vararg_Expr(ls)
-    elseif Unary_Ops[tok] then
+    elseif Unary_Ops[name] then
         push_curline(ls)
         ls:get()
-        return Unary_Expr(ls, tok, parse_binexpr(ls, Unary_Ops[tok]))
+        return Unary_Expr(ls, name, parse_binexpr(ls, Unary_Ops[name]))
     elseif name == "<number>" then
         push_curline(ls)
         local v = tok.value

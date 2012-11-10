@@ -7,6 +7,7 @@
 local M = require "rt.core"
 require "rt.env"
 require "rt.table"
+require "rt.list"
 require "rt.seq"
 require "rt.object"
 require "rt.defenv"
