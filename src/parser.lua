@@ -1934,6 +1934,7 @@ local parse_function = function(ls, obj)
     if tok.name == "{" then
         local lah, body = ls:lookahead()
         if lah == "|" or lah == "case" then
+            ls:get()
             push_curline(ls)
             local el = {}
             for i = 1, #ids do
@@ -2525,6 +2526,16 @@ parse_primaryexpr = function(ls)
         local v = tok.value
         ls:get()
         return Symbol_Expr(ls, v)
+    elseif tok.name == "@" then
+        push_curline(ls)
+        push_curline(ls)
+        ls:get()
+        push_curline(ls)
+        assert_tok(ls, "<ident>")
+        local v = tok.value
+        ls:get()
+        return Index_Expr(ls, Symbol_Expr(ls, "self"),
+            Value_Expr(ls, TAG_STRING, v))
     else
         syntax_error(ls, "unexpected symbol")
     end
