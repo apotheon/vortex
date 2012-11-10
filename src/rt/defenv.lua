@@ -42,6 +42,8 @@ env.io       = _G.io
 
 -- Vortex builtin functions
 env.super = M.__vx_obj_super
+env.first = M.__vx_list_first
+env.rest  = M.__vx_list_rest
 
 env._L       = _G
 env._G       = env

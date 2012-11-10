@@ -1130,9 +1130,9 @@ local Cons_Pattern = Expr:clone {
         ts:push(gen_goto(kwargs.next_arm))
         sc:push(gen_if(gen_binexpr("!=", gen_call(tfun, expr),
             gen_str("table")), ts))
-        sc:push(gen_ass(head, gen_call(first, expr)))
+        sc:push(gen_local(head, gen_call(first, expr)))
         sc:push(gen_if(gen_binexpr("==", head, "nil"), ts))
-        sc:push(gen_ass(tail, gen_call(rest,  expr)))
+        sc:push(gen_local(tail, gen_call(rest,  expr)))
     end
 }
 
