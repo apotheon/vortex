@@ -1920,11 +1920,16 @@ local parse_function = function(ls, obj)
         if obj then
             assert_tok(ls, "<ident>")
         end
-        assert_tok(ls, "(")
-        ls:get()
+        local par = false
+        if tok.name == "(" then
+            ls:get()
+            par = true
+        end
         ids, defs = parse_arglist(ls)
-        assert_tok(ls, ")")
-        ls:get()
+        if par then
+            assert_tok(ls, ")")
+            ls:get()
+        end
     else
         assert_tok(ls, "<ident>")
     end
