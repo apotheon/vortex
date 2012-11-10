@@ -8,7 +8,7 @@ local Binary_Ops = {
     ["*=" ] = { 2,  1  }, ["/=" ] = { 2,  1  }, ["%=" ] = { 2,  1  },
     --["^=" ] = { 2,  1  }, ["&=" ] = { 2,  1  }, ["|=" ] = { 2,  1  },
     --["<<="] = { 2,  1  }, [">>="] = { 2,  1  },
-    ["++="] = { 2,  1  }, ["**="] = { 2,  1  },
+    ["++="] = { 2,  1  }, ["::="] = { 2,  1  }, ["**="] = { 2,  1  },
 
     -- followed by logical operators or, and
     ["or" ] = { 3,  3  }, ["and"] = { 4,  4  },
@@ -31,16 +31,16 @@ local Binary_Ops = {
     ["+"  ] = { 13, 13 }, ["-"  ] = { 13, 13 }, ["*"  ] = { 14, 14 },
     ["/"  ] = { 14, 14 }, ["%"  ] = { 14, 14 },
 
-    -- join and cons have the same precedence
-    ["++" ] = { 15, 15 }, ["::" ] = { 15, 15 },
+    -- join is left associative, cons is right associative
+    ["++" ] = { 15, 15 }, ["::" ] = { 16, 15 },
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
-    ["**" ] = { 18, 17 }
+    ["**" ] = { 19, 18 }
 }
 
 local Unary_Ops = {
-    ["-"  ] = 16, ["not"] = 16, ["#"  ] = 16, ["~"  ] = 16
+    ["-"  ] = 17, ["not"] = 17, ["#"  ] = 17, ["~"  ] = 17
 }
 
 local Ass_Ops = {
@@ -137,8 +137,9 @@ local gen_binexpr = function(op, lhs, rhs)
     if op == "~" then
         op = ".."
     elseif op == "++" then
-        local f = get_rt_fun("tbl_join")
-        return concat { f, "(", lhs, ", ", rhs, ")" }
+        return concat { get_rt_fun("tbl_join"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "::" then
+        return concat { get_rt_fun("list_cons"), "(", lhs, ", ", rhs, ")" }
     elseif op == "!=" then
         op = "~="
     end
@@ -216,6 +217,12 @@ local gen_table = function(sc, t)
 
     tbl[#tbl + 1] = "\n" .. (" "):rep((sc.indent) * META.cgen.indent) .. "}"
     return concat(tbl)
+end
+
+local gen_list = function(sc, syms)
+    local fun = get_rt_fun("list_new")
+    -- TODO: break lines maybe?
+    return concat { fun, "(", gen_seq(syms), ")" }
 end
 
 local gen_indent = function(lvl)
@@ -639,6 +646,37 @@ local Table_Expr = Expr:clone {
                 .. "\n" .. gen_indent(i) .. "}"
         end
         return ("Table_Expr(%s, %s)"):format(array, assarr)
+    end
+}
+
+local List_Expr = Expr:clone {
+    name = "List_Expr",
+
+    __init = function(self, ps, contents)
+        Expr.__init(self, ps)
+        self.contents = contents
+    end,
+
+    generate = function(self, sc, kwargs)
+        if kwargs.statement then return nil end
+        local lst = self.contents
+
+        local syms, len = {}, #lst
+        for i = 1, len do
+            local expr = lst[i]
+            if i == len or expr:is_a(Value_Expr) then
+                syms[i] = expr:generate(sc, {})
+            else
+                local sym = unique_sym("list")
+                sc:push(gen_local(sym, expr:generate(sc, {})))
+                syms[i] = sym
+            end
+        end
+
+        return gen_list(sc, syms)
+    end,
+
+    to_lua = function(self, i)
     end
 }
 
@@ -1811,7 +1849,6 @@ local parse_table = function(ls)
         return Table_Expr(ls, tbl)
     end
 
-    local tok = ls.token
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
@@ -1842,6 +1879,28 @@ local parse_table = function(ls)
     ls:get()
 
     return Table_Expr(ls, tbl)
+end
+
+local parse_list = function(ls)
+    push_curline(ls)
+    ls:get()
+    ls:get()
+    local tok = ls.token
+
+    if tok.name == ":" then
+        ls:get()
+        assert_tok(ls, "]")
+        ls:get()
+        return List_Expr(ls, {})
+    end
+
+    local el = parse_exprlist(ls)
+
+    assert_tok(ls, ":")
+    ls:get()
+    assert_tok(ls, "]")
+    ls:get()
+    return List_Expr(ls, el)
 end
 
 local parse_match = function(ls)
@@ -2680,7 +2739,11 @@ local parse_simpleexpr = function(ls)
     elseif name == "{" then
         return parse_block(ls)
     elseif name == "[" then
-        return parse_table(ls)
+        if ls:lookahead() == ":" then
+            return parse_list(ls)
+        else
+            return parse_table(ls)
+        end
     elseif name == "__FILE__" then
         push_curline(ls)
         ls:get()
