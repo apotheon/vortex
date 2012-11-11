@@ -2769,19 +2769,33 @@ local parse_simpleexpr = function(ls)
         return Value_Expr(ls, TAG_NUMBER, v)
     elseif name == "<string>" then
         push_curline(ls)
-        local exprs, levels, v = { true }, {}
-        repeat
-            v = v and (v .. tok.value) or tok.value
-            local d = tok.data
-            tok.data = nil
-            if d then
-                for i = 1, #d do
-                    exprs[#exprs + 1] = Symbol_Expr(nil, d[i].value)
+        ls:get() -- consume the "start" token
+
+        local levels, exprs, value = {}, { true }
+        while true do
+            -- potential string end? but we have to assume implicit
+            -- constant concatenation
+            local tn, tv = tok.name, tok.value
+            if tn == "<string>" and type(tv) == "table" then
+                -- append levels
+                for k, v in pairs(tv) do
+                    levels[k] = true
                 end
-                local lvls = d.levels
-                for k, v in pairs(lvls) do levels[k] = true end
+                ls:get()
+                -- end of the string
+                if tok.name ~= "<string>" then
+                    break
+                end
+                -- consume next "start" token
+                ls:get()
+            elseif tn == "$" then
+                exprs[#exprs + 1] = parse_expr(ls)
+                value = value and (value .. "%s") or "%s"
+            else
+                value = value and (value .. tv) or tv
+                ls:get()
             end
-        until ls:get() ~= "<string>"
+        end
 
         local level = 0
         while levels[level] do
@@ -2789,10 +2803,10 @@ local parse_simpleexpr = function(ls)
         end
         if #exprs > 1 then
             push_curline(ls)
-            exprs[1] = Value_Expr(ls, TAG_STRING, v, level)
+            exprs[1] = Value_Expr(ls, TAG_STRING, value, level)
             return Call_Expr(ls, Symbol_Expr(nil, "str_fmt", true), exprs)
         end
-        return Value_Expr(ls, TAG_STRING, v, level)
+        return Value_Expr(ls, TAG_STRING, value, level)
     elseif name == "nil" or name == "true" or name == "false" then
         push_curline(ls)
         ls:get()

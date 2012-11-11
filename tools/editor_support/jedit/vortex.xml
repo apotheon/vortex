@@ -40,6 +40,14 @@
         <EOL_SPAN TYPE="COMMENT1">//</EOL_SPAN>
 
         <!-- string literals -->
+        <SPAN TYPE="LITERAL2" ESCAPE="\">
+            <BEGIN>"""</BEGIN>
+            <END>"""</END>
+        </SPAN>
+        <SPAN TYPE="LITERAL2" ESCAPE="\">
+            <BEGIN>'''</BEGIN>
+            <END>'''</END>
+        </SPAN>
         <SPAN TYPE="LITERAL1" ESCAPE="\">
             <BEGIN>"</BEGIN>
             <END>"</END>
@@ -47,14 +55,6 @@
         <SPAN TYPE="LITERAL1" ESCAPE="\">
             <BEGIN>'</BEGIN>
             <END>'</END>
-        </SPAN>
-        <SPAN TYPE="LITERAL1" ESCAPE="\">
-            <BEGIN>"""</BEGIN>
-            <END>"""</END>
-        </SPAN>
-        <SPAN TYPE="LITERAL1" ESCAPE="\">
-            <BEGIN>'''</BEGIN>
-            <END>'''</END>
         </SPAN>
 
         <!-- sequences and special chars -->

@@ -16,6 +16,8 @@ local is_alnum     = util.is_alnum
 local is_digit     = util.is_digit
 local is_hex_digit = util.is_hex_digit 
 local fatal        = util.fatal
+local concat       = table.concat
+local Stack        = util.Stack
 
 -- all of the core vortex keywords
 local keywords = {
@@ -174,11 +176,15 @@ local read_dec_esc = function(ls)
     return char(n)
 end
 
-local read_string = function(ls, delim, buf, exprs, prefixes, long)
-    local usedlevels, sp = {}, prefixes or {}
+local cw, cy = coroutine.wrap, coroutine.yield
+local readstr = function(ls, prefixes, delim, long)
+    cy()
+    local buf, levels, sp = {}, {}, prefixes or {}
     local raw, expand = sp.raw, sp.expand
+
+    cy("<string>", nil)
     while true do
-        local  curr = ls.current
+        local curr = ls.current
         if not long then
             if curr == delim then
                 break
@@ -202,10 +208,9 @@ local read_string = function(ls, delim, buf, exprs, prefixes, long)
         if not curr then
             lex_error(ls, "unfinished string", "<eos>")
         elseif is_newline(curr) and not long then
-            lex_error(ls, "unfinished string", table.concat(buf))
+            lex_error(ls, "unfinished string", concat(buf))
         elseif curr == "\\" then
-            next_char(ls)
-            local curr = ls.current
+            local curr = next_char(ls)
             if curr == "a" then
                 buf[#buf + 1] = raw and "\\a" or "\a"
                 next_char(ls)
@@ -257,7 +262,6 @@ local read_string = function(ls, delim, buf, exprs, prefixes, long)
                 end
                 buf[#buf + 1] = read_dec_esc(ls)
             end
-        -- embedded Lua "long" strings
         elseif curr == "[" or curr == "]" then
             local c = curr
             save_and_next_char(ls, buf)
@@ -267,34 +271,71 @@ local read_string = function(ls, delim, buf, exprs, prefixes, long)
                 save_and_next_char(ls, buf)
             end
             if ls.current == c then
-                usedlevels[lev] = true
+                levels[lev] = true
             end
             save_and_next_char(ls, buf)
-        -- interpolation
         elseif curr == "$" and expand then
-            next_char(ls)
+            local str = concat(buf)
+            buf = {}
+            cy("<string>", str)
+            cy("$", nil)
+            local c = next_char(ls)
             local tok = {}
-            local name = lex(ls, tok)
-            if name ~= "<ident>" then
-                buf[#buf + 1] = tok.value or name
+            if c == "(" then
+                cy("(", nil)
+                next_char(ls)
+                repeat
+                    local name = lex(ls, tok, true)
+                    cy(name, tok.value)
+                until ls.current == ")"
+                cy(")", nil)
+                next_char(ls)
             else
-                buf[#buf + 1] = "%s"
-                exprs[#exprs + 1] = tok
+                local name = lex(ls, tok, true)
+                if name == "<ident>" then
+                    cy(name, tok.value)
+                else
+                    buf[#buf + 1] = "$" .. (tok.value or name)
+                end
             end
-        -- other characters are saved as usual
         else
             save_and_next_char(ls, buf)
         end
     end
-
-    -- remove the ending delimiter
     next_char(ls)
-    return usedlevels
+    cy("<string>", concat(buf))
+    return "<string>", levels
 end
 
-lex = function(ls, token)
+local read_string = function(ls, prefixes)
+    local delim, long = ls.current
+    if next_char(ls) == delim then
+        if next_char(ls) == delim then
+            next_char(ls)
+            long = true
+        end
+    end
+    local coro = cw(readstr)
+    coro(ls, prefixes, delim, long)
+    return coro
+end
+
+local str_readers = Stack()
+lex = function(ls, token, instr)
     token.value = nil
     while true do
+        if not instr then
+            local rdr = str_readers:top()
+            if rdr then
+                local tok, val = rdr()
+                -- terminating token
+                if type(val) == "table" then
+                    str_readers:pop()
+                end
+                token.value = val
+                return tok
+            end
+        end
         local curr = ls.current
 
         -- end of stream
@@ -501,20 +542,9 @@ lex = function(ls, token)
 
         -- strings
         elseif curr == '"' or curr == "'" then
-            local delim, long = curr
-            curr = next_char(ls)
-            if curr == delim then
-                curr = next_char(ls)
-                if curr == delim then
-                    long = true
-                    next_char(ls)
-                end
-            end
-            local buf, exprs = {}, {}
-            exprs.levels = read_string(ls, delim, buf, exprs, nil, long)
-            token.value  = table.concat(buf)
-            token.data   = exprs
-            return "<string>"
+            local rdr = str_readers:push(read_string(ls))
+            -- the "start" token
+            return rdr()
 
         -- keywords, identifiers, single-char tokens
         else
@@ -555,22 +585,12 @@ lex = function(ls, token)
                             if raw > 1 or expand > 1 then
                                 lex_error(ls, "invalid string prefix", str)
                             end
-                            local delim, long = curr
-                            curr = next_char(ls)
-                            if curr == delim then
-                                curr = next_char(ls)
-                                if curr == delim then
-                                    long = true
-                                    next_char(ls)
-                                end
-                            end
-                            local buf, exprs = {}, {}
-                            exprs.levels = read_string(ls, delim, buf, exprs, {
+
+                            local rdr = str_readers:push(read_string(ls, {
                                 raw = raw ~= 0, expand = expand ~= 0
-                            }, long)
-                            token.value = table.concat(buf)
-                            token.data = exprs
-                            return "<string>"
+                            }))
+                            -- the "start" token
+                            return rdr()
                         end
                     end
                     token.value = str
