@@ -21,7 +21,6 @@ local Stack        = util.Stack
 
 -- all of the core vortex keywords
 local keywords = {
-    ["again" ] = true,
     ["and"   ] = true,
     ["as"    ] = true,
     ["break" ] = true,
@@ -29,6 +28,7 @@ local keywords = {
     ["cfn"   ] = true,
     ["clone" ] = true,
     ["coro"  ] = true,
+    ["cycle" ] = true,
     ["do"    ] = true,
     ["else"  ] = true,
     ["false" ] = true,
