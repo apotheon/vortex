@@ -856,6 +856,7 @@ local Function_Expr = Expr:clone {
     __init = function(self, ps, params, defaults, body)
         Expr.__init(self, ps)
         ps.fnstack:pop()
+        ps.lpstack:pop()
         self.params, self.defaults, self.body = params, defaults, body
     end,
 
@@ -1418,6 +1419,7 @@ local While_Expr = Expr:clone {
 
     __init = function(self, ps, cond, body)
         Expr.__init(self, ps)
+        ps.lpstack:pop()
         self.cond, self.body = cond, body
     end,
 
@@ -1456,6 +1458,7 @@ local Do_While_Expr = Expr:clone {
 
     __init = function(self, ps, cond, body)
         Expr.__init(self, ps)
+        ps.lpstack:pop()
         self.cond, self.body = cond, body
     end,
 
@@ -1490,6 +1493,7 @@ local For_Expr = Expr:clone {
 
     __init = function(self, ps, idents, exprs, body)
         Expr.__init(self, ps)
+        ps.lpstack:pop()
         self.idents, self.exprs, self.body = idents, exprs, body
     end,
 
@@ -1543,6 +1547,7 @@ local For_Range_Expr = Expr:clone {
 
     __init = function(self, ps, ident, first, last, step, body)
         Expr.__init(self, ps)
+        ps.lpstack:pop()
         self.ident, self.first, self.last, self.step, self.body
             = ident, first, last, step, body
     end,
@@ -1614,12 +1619,28 @@ local For_Range_Expr = Expr:clone {
     end
 }
 
+local Break_Expr = Expr:clone {
+    name = "Break_Expr",
+
+    generate = function(self, sc, kwargs)
+        
+    end
+}
+
+local Cycle_Expr = Expr:clone {
+    name = "Break_Expr",
+
+    generate = function(self, sc, kwargs)
+    end
+}
+
 local Seq_Expr = Expr:clone {
     name = "Seq_Expr",
 
     __init = function(self, ps, expr)
         Expr.__init(self, ps)
         ps.fnstack:pop()
+        ps.lpstack:pop()
         self.expr = expr
     end,
 
@@ -2047,6 +2068,7 @@ local parse_function = function(ls, obj)
     end
 
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
+    ls.lpstack:push(false)
 
     if tok.name == "{" then
         local lah, body = ls:lookahead()
@@ -2164,6 +2186,7 @@ local parse_sequence = function(ls)
     push_curline(ls)
     ls:get()
     ls.fnstack:push({ vararg = false })
+    ls.lpstack:push(false)
 
     local tok = ls.token
     if tok.name == "{" then
@@ -2466,6 +2489,7 @@ local parse_while = function(ls)
     local cond = parse_expr(ls)
     local tok  = ls.token
 
+    ls.lpstack:push(true)
     local body
     if tok.name == "{" then
         body = parse_block(ls)
@@ -2481,6 +2505,7 @@ end
 local parse_dowhile = function(ls)
     push_curline(ls)
     ls:get()
+    ls.lpstack:push(true)
     local body
     local tok = ls.token
     if tok.name == "{" then
@@ -2525,6 +2550,7 @@ local parse_for = function(ls)
         exprs = parse_exprlist(ls)
     end
 
+    ls.lpstack:push(true)
     if tok.name == "{" then
         body = parse_block(ls)
     else
@@ -2747,6 +2773,16 @@ local parse_simpleexpr = function(ls)
         return parse_dowhile(ls)
     elseif name == "for" then
         return parse_for(ls)
+    elseif name == "break" then
+        assert_check(ls, ls.lpstack:top(), "no loop to break")
+        push_curline(ls)
+        ls:get()
+        return Break_Expr(ls)
+    elseif name == "cycle" then
+        assert_check(ls, ls.lpstack:top(), "no loop to cycle")
+        push_curline(ls)
+        ls:get()
+        return Cycle_Expr(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "yield" then
@@ -2885,7 +2921,7 @@ end
 
 local parse = function(fname, reader)
     local ls = lexer.init(fname, reader)
-    ls.ndstack, ls.fnstack = Stack(), Stack()
+    ls.ndstack, ls.fnstack, ls.lpstack = Stack(), Stack(), Stack()
     -- global scope
     ls.fnstack:push({ vararg = false })
     ls:get()
