@@ -1,12 +1,43 @@
 var keywords = {
-    "and"   : "kw1", "as"    : "kw1", "break" : "kw1", "case"  : "kw1",
-    "cfn"   : "kw1", "clone" : "kw1", "coro"  : "kw1", "cycle" : "kw1",
-    "do"    : "kw1", "else"  : "kw1", "false" : "kw3", "fn"    : "kw1",
-    "for"   : "kw1", "glob"  : "kw2", "goto"  : "kw1", "if"    : "kw1",
-    "in"    : "kw2", "let"   : "kw1", "match" : "kw1", "module": "kw1",
-    "new"   : "kw1", "nil"   : "kw3", "not"   : "kw1", "or"    : "kw1",
-    "quote" : "kw1", "rec"   : "kw2", "return": "kw1", "seq"   : "kw1",
-    "true"  : "kw3", "when"  : "kw1", "while" : "kw1", "yield" : "kw1",
+    "and"   : "kw1",
+    "as"    : "kw1",
+    "asr"   : "kw1",
+    "band"  : "kw1",
+    "bnot"  : "kw1",
+    "bor"   : "kw1",
+    "break" : "kw1",
+    "bsl"   : "kw1",
+    "bsr"   : "kw1",
+    "bxor"  : "kw1",
+    "case"  : "kw1",
+    "cfn"   : "kw1",
+    "clone" : "kw1",
+    "coro"  : "kw1",
+    "cycle" : "kw1",
+    "do"    : "kw1",
+    "else"  : "kw1",
+    "false" : "kw3",
+    "fn"    : "kw1",
+    "for"   : "kw1",
+    "glob"  : "kw2",
+    "goto"  : "kw1",
+    "if"    : "kw1",
+    "in"    : "kw2",
+    "let"   : "kw1",
+    "match" : "kw1",
+    "module": "kw1",
+    "new"   : "kw1",
+    "nil"   : "kw3",
+    "not"   : "kw1",
+    "or"    : "kw1",
+    "quote" : "kw1",
+    "rec"   : "kw2",
+    "return": "kw1",
+    "seq"   : "kw1",
+    "true"  : "kw3",
+    "when"  : "kw1",
+    "while" : "kw1",
+    "yield" : "kw1",
 
     "assert": "kw2", "self": "kw2", "super": "kw2",
 
@@ -63,36 +94,20 @@ function process_syntax(text) {
             newstr += make_span("==", "seq");
         } else if (curr == ">") {
             ++i;
-            if (text[i] == ">") {
-                ++i;
-                if (text[i] == "=") {
-                    newstr += make_span(">>=", "seq");
-                } else {
-                    --i;
-                    newstr += make_span(">>", "seq");
-                }
-            } else if (text[i] == "=") {
-                newstr += make_span(">=", "seq");
-            } else {
+            if (text[i] != "=") {
                 --i;
                 newstr += make_span(">", "seq");
+                continue;
             }
+            newstr += make_span(">=", "seq");
         } else if (curr == "<") {
             ++i;
-            if (text[i] == "<") {
-                ++i;
-                if (text[i] == "=") {
-                    newstr += make_span("<<=", "seq");
-                } else {
-                    --i;
-                    newstr += make_span("<<", "seq");
-                }
-            } else if (text[i] == "=") {
-                newstr += make_span("<=", "seq");
-            } else {
+            if (text[i] != "=") {
                 --i;
                 newstr += make_span("<", "seq");
+                continue;
             }
+            newstr += make_span("<=", "seq");
         } else if (curr == "!") {
             ++i;
             if (text[i] != "=") {
@@ -143,7 +158,7 @@ function process_syntax(text) {
                 --i;
                 newstr += make_span("*", "seq");
             }
-        } else if (curr == "%" || curr == "&" || curr == "|" || curr == "^") {
+        } else if (curr == "%") {
             if (text[i + 1] != "=") {
                 newstr += make_span(curr, "seq");
                 continue;
