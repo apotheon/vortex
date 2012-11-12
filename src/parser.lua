@@ -1,52 +1,56 @@
 local lexer   = require("lexer")
 local util    = require("util")
 
--- t[1] > t[2] == right-associative, otherwise left-associative
+-- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
     -- all the assignment operators have the same, lowest precedence
-    ["="  ] = { 2,  1  }, ["+=" ] = { 2,  1  }, ["-=" ] = { 2,  1  },
-    ["*=" ] = { 2,  1  }, ["/=" ] = { 2,  1  }, ["%=" ] = { 2,  1  },
-    --["^=" ] = { 2,  1  }, ["&=" ] = { 2,  1  }, ["|=" ] = { 2,  1  },
-    --["<<="] = { 2,  1  }, [">>="] = { 2,  1  },
-    ["++="] = { 2,  1  }, ["::="] = { 2,  1  }, ["**="] = { 2,  1  },
+    ["="  ] = { 2, 1 }, ["+=" ] = { 2, 1 }, ["-=" ] = { 2, 1 },
+    ["*=" ] = { 2, 1 }, ["/=" ] = { 2, 1 }, ["%=" ] = { 2, 1 },
+    ["++="] = { 2, 1 }, ["::="] = { 2, 1 }, ["**="] = { 2, 1 },
+
+    -- bitwise assignment ops
+    ["band="] = { 2, 1 }, ["bor="] = { 2, 1 }, ["bxor="] = { 2, 1 },
+    ["asr=" ] = { 2, 1 }, ["bsr="] = { 2, 1 }, ["bsl=" ] = { 2, 1 },
 
     -- followed by logical operators or, and
-    ["or" ] = { 3,  3  }, ["and"] = { 4,  4  },
+    ["or"] = { 3, 3 }, ["and"] = { 4, 4 },
 
     -- eq / neq comparison
-    ["==" ] = { 5,  5  }, ["!=" ] = { 5,  5  },
+    ["=="] = { 5, 5 }, ["!="] = { 5, 5 },
 
     -- other comparisons
-    ["<"  ] = { 6,  6  }, ["<=" ] = { 6,  6  }, [">"  ] = { 6,  6 },
-    [">=" ] = { 6,  6  },
+    ["<" ] = { 6, 6 }, ["<="] = { 6, 6 }, [">"] = { 6, 6 },
+    [">="] = { 6, 6 },
 
     -- concat
-    ["~"  ] = { 8,  7  },
+    ["~"] = { 8, 7 },
 
     -- bitwise ops
-    --["|"  ] = { 9,  9  }, ["^"  ] = { 10, 10 }, ["&"  ] = { 11, 11 },
-    --[">>" ] = { 12, 12 }, ["<<" ] = { 12, 12 },
+    ["bor"] = { 9,  9  }, ["bxor"] = { 10, 10 }, ["band"] = { 11, 11 },
+    ["asr"] = { 12, 12 }, ["bsr" ] = { 12, 12 }, ["bsl" ] = { 12, 12 },
 
     -- arithmetic ops
-    ["+"  ] = { 13, 13 }, ["-"  ] = { 13, 13 }, ["*"  ] = { 14, 14 },
-    ["/"  ] = { 14, 14 }, ["%"  ] = { 14, 14 },
+    ["+"] = { 13, 13 }, ["-"] = { 13, 13 }, ["*"] = { 14, 14 },
+    ["/"] = { 14, 14 }, ["%"] = { 14, 14 },
 
     -- join is left associative, cons is right associative
-    ["++" ] = { 15, 15 }, ["::" ] = { 16, 15 },
+    ["++"] = { 15, 15 }, ["::"] = { 16, 15 },
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
-    ["**" ] = { 19, 18 }
+    ["**"] = { 19, 18 }
 }
 
 local Unary_Ops = {
-    ["-"  ] = 17, ["not"] = 17, ["#"  ] = 17, ["~"  ] = 17
+    ["-"  ] = 17, ["not"] = 17, ["#"  ] = 17, ["bnot"] = 17
 }
 
 local Ass_Ops = {
     ["="  ] = true, ["+=" ] = true, ["-=" ] = true, ["*=" ] = true,
-    ["/=" ] = true, ["%=" ] = true, ["^=" ] = true, ["&=" ] = true,
-    ["|=" ] = true, ["<<="] = true, [">>="] = true
+    ["/=" ] = true, ["%=" ] = true,
+
+    ["band="] = true, ["bor="] = true, ["bxor="] = true,
+    ["asr=" ] = true, ["bsr="] = true, ["bsl=" ] = true,
 }
 
 local syntax_error = lexer.syntax_error
@@ -140,6 +144,18 @@ local gen_binexpr = function(op, lhs, rhs)
         return concat { get_rt_fun("tbl_join"), "(", lhs, ", ", rhs, ")" }
     elseif op == "::" then
         return concat { get_rt_fun("list_cons"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "bor" then
+        return concat { get_rt_fun("bor"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "bxor" then
+        return concat { get_rt_fun("bxor"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "band" then
+        return concat { get_rt_fun("band"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "asr" then
+        return concat { get_rt_fun("arsh"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "bsr" then
+        return concat { get_rt_fun("rsh"), "(", lhs, ", ", rhs, ")" }
+    elseif op == "bsl" then
+        return concat { get_rt_fun("lsh"), "(", lhs, ", ", rhs, ")" }
     elseif op == "!=" then
         op = "~="
     end
@@ -147,6 +163,9 @@ local gen_binexpr = function(op, lhs, rhs)
 end
 
 local gen_unexpr = function(op, rhs)
+    if op == "bnot" then
+        return concat { get_rt_fun("bnot"), "(", rhs, ")" }
+    end
     return concat { "(", op, " ", rhs, ")" }
 end
 

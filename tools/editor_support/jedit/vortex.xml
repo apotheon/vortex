@@ -125,14 +125,21 @@
             <!-- reserved core keywords -->
             <KEYWORD3>__FILE__</KEYWORD3>
             <KEYWORD3>__LINE__</KEYWORD3>
-            <KEYWORD1>again</KEYWORD1>
             <KEYWORD1>and</KEYWORD1>
             <KEYWORD1>as</KEYWORD1>
+            <KEYWORD1>asr</KEYWORD1>
+            <KEYWORD1>band</KEYWORD1>
+            <KEYWORD1>bnot</KEYWORD1>
+            <KEYWORD1>bor</KEYWORD1>
             <KEYWORD1>break</KEYWORD1>
+            <KEYWORD1>bsl</KEYWORD1>
+            <KEYWORD1>bsr</KEYWORD1>
+            <KEYWORD1>bxor</KEYWORD1>
             <KEYWORD1>case</KEYWORD1>
             <KEYWORD1>cfn</KEYWORD1>
             <KEYWORD1>clone</KEYWORD1>
             <KEYWORD1>coro</KEYWORD1>
+            <KEYWORD1>cycle</KEYWORD1>
             <KEYWORD1>do</KEYWORD1>
             <KEYWORD1>else</KEYWORD1>
             <KEYWORD3>false</KEYWORD3>

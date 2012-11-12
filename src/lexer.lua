@@ -28,7 +28,7 @@ local keywords = {
     ["cfn"   ] = true,
     ["clone" ] = true,
     ["coro"  ] = true,
-    ["cycle" ] = true,
+    ["cycle" ] = true,
     ["do"    ] = true,
     ["else"  ] = true,
     ["false" ] = true,
@@ -56,6 +56,17 @@ local keywords = {
 
     ["__FILE__"] = true,
     ["__LINE__"] = true
+}
+
+-- true - binary op, false - unary op
+local kwops = {
+    ["band"] = true,
+    ["bor" ] = true,
+    ["bxor"] = true,
+    ["bnot"] = false,
+    ["asr" ] = true,
+    ["bsr" ] = true,
+    ["bsl" ] = true
 }
 
 local lex_error = function(ls, msg, value)
@@ -358,46 +369,18 @@ lex = function(ls, token, instr)
             if ls.current ~= "=" then return "=" end
             next_char(ls)
             return "=="
-        -- > or >=, >>, >>= 
+        -- > or >=
         elseif curr == ">" then
             next_char(ls)
-            -- >>, >>=
-            if ls.curent == ">" then
-                next_char(ls)
-                if ls.current == "=" then
-                    next_char(ls)
-                    return ">>="
-                else
-                    return ">>"
-                end
-            -- >=
-            elseif ls.current == "=" then
-                next_char(ls)
-                return ">="
-            -- >
-            else
-                return ">"
-            end
-        -- < , <=, <<, <<=
+            if ls.current ~= "=" then return ">" end
+            next_char(ls)
+            return ">="
+        -- < or <=
         elseif curr == "<" then
             next_char(ls)
-            -- <<, <<=
-            if ls.curent == "<" then
-                next_char(ls)
-                if ls.current == "=" then
-                    next_char(ls)
-                    return "<<="
-                else
-                    return "<<"
-                end
-            -- >=
-            elseif ls.current == "=" then
-                next_char(ls)
-                return "<="
-            -- >
-            else
-                return "<"
-            end
+            if ls.current ~= "=" then return "<" end
+            next_char(ls)
+            return "<="
         -- ! or !=
         elseif curr == "!" then
             next_char(ls)
@@ -467,25 +450,6 @@ lex = function(ls, token, instr)
             if ls.current ~= "=" then return "%" end
             next_char(ls)
             return "%="
-
-        -- &, &=
-        elseif curr == "&" then
-            next_char(ls)
-            if ls.current ~= "=" then return "&" end
-            next_char(ls)
-            return "&="
-        -- |, |=
-        elseif curr == "|" then
-            next_char(ls)
-            if ls.current ~= "=" then return "|" end
-            next_char(ls)
-            return "|="
-        -- ^, ^=
-        elseif curr == "^" then
-            next_char(ls)
-            if ls.current ~= "=" then return "^" end
-            next_char(ls)
-            return "^="
 
         -- /, /=, // (short comments), /* */ (long comments)
         elseif curr == "/" then
@@ -576,8 +540,17 @@ lex = function(ls, token, instr)
                 end
 
                 local str = table.concat(buf)
-                if keywords[str] then
-                    return  str
+                local kwop = kwops[str]
+                -- keyworded operator
+                if kwop == true or kwop == false then
+                    -- binary operator, assume compound
+                    if kwop == true and ls.current == "=" then
+                        next_char(ls)
+                        return str .. "="
+                    end
+                    return str
+                elseif keywords[str] then
+                    return str
                 else
                     if strp then
                         local curr = ls.current
