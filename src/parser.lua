@@ -84,10 +84,7 @@ end
 local concat = table.concat
 
 local Scope = util.Object:clone {
-    __init = function(self, fs, indent)
-        self.body, self.fstate, self.indent, self.locked
-            = {}, fs, indent, false
-    end,
+    indent = 0,
 
     push = function(self, stat)
         if self.locked then return nil end
@@ -114,11 +111,23 @@ local Scope = util.Object:clone {
     end
 }
 
-local Function_State = Scope:clone {
-    __init = function(self, indent)
-        Scope.__init(self, self, indent)
-    end
-}
+-- new function scope eliminates extra data
+local new_fn_scope = function(sc, noinc)
+    local ret = sc:clone()
+    ret.fstate = ret
+    ret.indent = noinc and sc.indent or sc.indent + 1
+    ret.body, ret.locked = {}, false
+    ret.data = {}
+    return ret
+end
+
+local new_scope = function(sc, fs, noinc)
+    local ret = sc:clone()
+    ret.fstate = fs or sc.fstate
+    ret.indent = noinc and sc.indent or sc.indent + 1
+    ret.body, ret.locked = {}, false
+    return ret
+end
 
 local gen_str = function(str, level)
     local ind = ("="):rep(level or 0)
@@ -401,9 +410,8 @@ local Vararg_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local fs = sc:is_a(Function_State) and sc or sc.fstate
         local sl = get_rt_fun("select")
-        return sl .. "(" .. (fs.ndefargs + 1) .. ", ...)"
+        return sl .. "(" .. (sc.fstate.ndefargs + 1) .. ", ...)"
     end,
 
     to_lua = function(self, i)
@@ -516,7 +524,7 @@ local Block_Expr = Expr:clone {
         local len   = #exprs
 
         local no_scope = kwargs.no_scope
-        local scope = (not no_scope) and Scope(sc.fstate, sc.indent + 1) or sc
+        local scope = (not no_scope) and new_scope(sc) or sc
 
         for i = 1, len do
             exprs[i]:generate(scope, {
@@ -536,7 +544,7 @@ local Block_Expr = Expr:clone {
                 return_val = true
             }))
         elseif no_scope then
-            if sc:is_a(Function_State) or kwargs.return_val then
+            if sc.fstate == sc or kwargs.return_val then
                 sc:push(gen_ret(vexpr:generate(sc, {})))
             else
                 return vexpr:generate(sc, {
@@ -552,7 +560,7 @@ local Block_Expr = Expr:clone {
             local sym = unique_sym("block")
             sc:push(gen_local(sym))
             if vexpr:is_multret() then
-                local fsc = Scope(scope.fstate, scope.indent + 1)
+                local fsc = new_scope(scope)
                 fsc:push(gen_ret(vexpr:generate(scope, {})))
                 scope:push(gen_ass(sym, gen_fun("", fsc)))
                 sc:push(gen_block(scope))
@@ -861,7 +869,7 @@ local Function_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local fs = Function_State(sc.indent + 1)
+        local fs = new_fn_scope(sc)
 
         local args,  defs  = self.params, self.defaults
         local nargs, ndefs = #args, #defs
@@ -901,10 +909,10 @@ local Function_Expr = Expr:clone {
                 end
                 fs:push(gen_local(name))
 
-                local tsc = Scope(fs, fs.indent + 1)
+                local tsc = new_scope(fs)
                 tsc:push(gen_ass(name, defs[i]:generate(tsc, {})))
 
-                local fsc = Scope(fs, fs.indent + 1)
+                local fsc = new_scope(fs)
                 fsc:push(gen_ass(name, gen_call(sl, gen_seq({ i, "..." }))))
 
                 fs:push(gen_if(gen_binexpr("<", nd, i), tsc, fsc))
@@ -966,7 +974,7 @@ local If_Expr = Expr:clone {
         local tv, fv = self.tval, self.fval
 
         tscoped = tv:is_scoped()
-        tsc  = Scope(sc.fstate, sc.indent + 1)
+        tsc  = new_scope(sc)
         tval = tv:generate(tsc, {
             no_scope  = true,
             statement = stat,
@@ -975,7 +983,7 @@ local If_Expr = Expr:clone {
 
         if fv then
             fscoped = fv:is_scoped()
-            fsc  = Scope(sc.fstate, sc.indent + 1)
+            fsc  = new_scope(sc)
             fval = fv:generate(fsc, {
                 no_scope  = true,
                 statement = stat,
@@ -994,11 +1002,11 @@ local If_Expr = Expr:clone {
 
             sc:push(gen_local(sym))
             if self:is_multret() then
-                local tfsc = Scope(tsc.fstate, tsc.indent + 1)
+                local tfsc = new_scope(tsc)
                 tfsc:push(gen_ret(tval))
                 tsc:push(gen_ass(sym, gen_fun("", tfsc)))
                 if fv then
-                    local ffsc = Scope(fsc.fstate, fsc.indent + 1)
+                    local ffsc = new_scope(fsc)
                     ffsc:push(gen_ret(fval))
                     fsc:push(gen_ass(sym, gen_fun("", ffsc)))
                 end
@@ -1136,7 +1144,7 @@ local Table_Pattern = Expr:clone {
             return gen_seq(ret)
         end
 
-        local ns = Scope(sc.fstate, sc.indent)
+        local ns = new_scope(sc, nil, true)
         for i = 1, #tbl do
             local it = tbl[i]
             local k, v = it[1], it[2]
@@ -1149,7 +1157,7 @@ local Table_Pattern = Expr:clone {
             ret = ret and gen_binexpr("and", ret, pv) or pv
         end
 
-        local ts = Scope(sc.fstate, sc.indent + 1)
+        local ts = new_scope(sc)
         ts:push(gen_goto(kwargs.next_arm))
         sc:push(gen_if(gen_binexpr("or",
             gen_binexpr("!=", gen_call(tfun, expr), gen_str("table")),
@@ -1184,7 +1192,7 @@ local Cons_Pattern = Expr:clone {
             return seq
         end
 
-        local ts = Scope(sc.fstate, sc.indent + 1)
+        local ts = new_scope(sc)
         ts:push(gen_goto(kwargs.next_arm))
         sc:push(gen_if(gen_binexpr("!=", gen_call(tfun, expr),
             gen_str("table")), ts))
@@ -1250,7 +1258,7 @@ local Match_Expr = Expr:clone {
             local pl, bd = arm[1], arm[2]
             local ptrns = {}
 
-            local asc = Scope(sc.fstate, sc.indent + 1)
+            local asc = new_scope(sc)
             sc:push(gen_label(armlb))
             armlb = (i ~= narms) and unique_sym("lbl") or elb
             local n = 1
@@ -1262,7 +1270,7 @@ local Match_Expr = Expr:clone {
                 })
                 local cond = pt.cond
                 if cond then
-                    local ts = Scope(asc.fstate, asc.indent + 1)
+                    local ts = new_scope(asc)
                     ts:push(gen_goto(armlb))
                     asc:push(gen_if(gen_unexpr("not", cond:generate(asc, {})),
                         ts))
@@ -1284,7 +1292,7 @@ local Match_Expr = Expr:clone {
             end
 
             if cond then
-                local csc = Scope(asc.fstate, asc.indent + 1)
+                local csc = new_scope(asc)
                 csc:push(gen_goto(armlb))
                 asc:push(gen_if(gen_unexpr("not", cond), csc))
             end
@@ -1299,7 +1307,7 @@ local Match_Expr = Expr:clone {
                 asc:push((rval and not bd:is_scoped())
                     and gen_ret(aval) or aval)
             elseif multret then
-                local fsc = Scope(asc.fstate, asc.indent + 1)
+                local fsc = new_scope(asc)
                 fsc:push(gen_ret(aval))
                 asc:push(gen_ass(msym, gen_fun("", fsc)))
             else
@@ -1424,13 +1432,17 @@ local While_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local bsc = Scope(sc.fstate, sc.indent + 1)
+        local bsc = new_scope(sc)
 
         local lbl = unique_sym("lbl")
         local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        bsc.data = {
+            loop_start = lbeg,
+            loop_end   = lend
+        }
         bsc:push(gen_label(lbeg))
 
-        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        local tsc = new_scope(bsc)
         tsc:push(gen_goto(lend))
         bsc:push(gen_if(gen_unexpr("not", self.cond:generate(bsc, {})), tsc))
         self.body:generate(bsc, {
@@ -1463,17 +1475,23 @@ local Do_While_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local bsc = Scope(sc.fstate, sc.indent + 1)
+        local bsc = new_scope(sc)
 
         local lbl = unique_sym("lbl")
-        bsc:push(gen_label(lbl))
+        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        bsc.data = {
+            loop_start = lbeg,
+            loop_end   = lend
+        }
+        bsc:push(gen_label(lbeg))
         self.body:generate(bsc, {
             statement = true,
             no_scope  = true
         })
-        local tsc = Scope(sc.fstate, bsc.indent + 1)
-        tsc:push(gen_goto(lbl))
+        local tsc = new_scope(bsc)
+        tsc:push(gen_goto(lbeg))
         bsc:push(gen_if(self.cond:generate(bsc, {}), tsc))
+        bsc:push(gen_label(lend))
 
         sc:push(gen_block(bsc))
     end,
@@ -1498,13 +1516,17 @@ local For_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local bsc = Scope(sc.fstate, sc.indent + 1)
+        local bsc = new_scope(sc)
 
         local fsym, ssym, varsym
             = unique_sym("f"), unique_sym("s"), unique_sym("var")
 
         local lbl = unique_sym("lbl")
         local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        bsc.data = {
+            loop_start = lbeg,
+            loop_end   = lend
+        }
 
         local exps = {}
         local el = self.exprs
@@ -1518,7 +1540,7 @@ local For_Expr = Expr:clone {
         bsc:push(gen_local(gen_seq(ids), gen_call(fsym,
             gen_seq({ ssym, varsym }))))
 
-        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        local tsc = new_scope(bsc)
         tsc:push(gen_goto(lend))
         bsc:push(gen_if(gen_binexpr("==", ids[1], "nil"), tsc))
         bsc:push(gen_ass(varsym, ids[1]))
@@ -1553,7 +1575,7 @@ local For_Range_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local bsc = Scope(sc.fstate, sc.indent + 1)
+        local bsc = new_scope(sc)
         local tonum = get_rt_fun("tonum")
         local rterr = get_rt_fun("error")
 
@@ -1562,6 +1584,10 @@ local For_Range_Expr = Expr:clone {
 
         local lbl = unique_sym("lbl")
         local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        bsc.data = {
+            loop_start = lbeg,
+            loop_end   = lend
+        }
 
         local ex1, ex2, ex3 = self.first:generate(bsc, {}),
             self.last:generate(bsc, {}), self.step:generate(bsc, {})
@@ -1571,8 +1597,8 @@ local For_Range_Expr = Expr:clone {
                       gen_call(tonum, ex2),
                       gen_call(tonum, ex3) })))
 
-        local ivs, lms, sts = Scope(sc.fstate, bsc.indent + 1),
-            Scope(sc.fstate, bsc.indent + 1), Scope(sc.fstate, bsc.indent + 1)
+        local ivs, lms, sts = new_scope(bsc),
+            new_scope(bsc), new_scope(bsc)
 
         local di = self.dinfo
         local src, linenum = di.source, di.first_line
@@ -1587,7 +1613,7 @@ local For_Range_Expr = Expr:clone {
 
         bsc:push(gen_label(lbeg))
 
-        local tsc = Scope(sc.fstate, bsc.indent + 1)
+        local tsc = new_scope(bsc)
         tsc:push(gen_goto(lend))
         bsc:push(gen_if(gen_unexpr("not", gen_binexpr("or",
             gen_binexpr("and",
@@ -1623,14 +1649,15 @@ local Break_Expr = Expr:clone {
     name = "Break_Expr",
 
     generate = function(self, sc, kwargs)
-        
+        sc:push(gen_goto(sc.data.loop_end))
     end
 }
 
 local Cycle_Expr = Expr:clone {
-    name = "Break_Expr",
+    name = "Cycle_Expr",
 
     generate = function(self, sc, kwargs)
+        sc:push(gen_goto(sc.data.loop_start))
     end
 }
 
@@ -1647,7 +1674,7 @@ local Seq_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
 
-        local fs = Scope(sc.fstate, sc.indent + 1)
+        local fs = new_scope(sc)
         local body = self.expr
         if body:is_a(Block_Expr) then
             body:generate(fs, {
@@ -2937,7 +2964,8 @@ end
 local build = function(ast)
     util.randomseed(os.clock() * os.time())
 
-    local ms = Scope(nil, 0)
+    local ms = new_scope(Scope)
+    ms.data = {}
 
     local rts = unique_sym("rt")
     local hdr = { gen_local(rts, gen_require("rt_init")) }
