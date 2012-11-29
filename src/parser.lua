@@ -789,6 +789,8 @@ local New_Expr = Expr:clone {
     end
 }
 
+local Pack_Expr
+
 local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
 
@@ -798,15 +800,53 @@ local Binary_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
+        local op, lhs, rhs = self.op, self.lhs, self.rhs
+        if not Ass_Ops[op] then
+            if not kwargs.statement then
+                return gen_binexpr(op, lhs:generate(sc, {}),
+                    rhs:generate(sc, {}))
+            end
+            return nil
+        end
+
+        local lel = {}
+        if lhs:is_a(Pack_Expr) then
+            local pel = lhs.exprlist
+            for i = 1, #pel do
+                lel[i] = pel[i]:generate(sc, {})
+            end
+        end
+
+        local ret = gen_seq(lel)
+        if op == "=" then
+            sc:push(gen_ass(ret, rhs:generate(sc, {})))
+        else
+            local el  = rhs.exprlist
+            local bop, exps = op:sub(1, #op - 1), {}
+            for i = 1, #el do
+                local le, ge = lel[i], el[i]:generate(sc, {})
+                exps[i] = le and gen_binexpr(bop, le, ge) or ge
+            end
+            local elen = #exps
+            local d = #lel - elen
+            if d > 0 then
+                for i = elen + 1, elen + d do
+                    exps[i] = lel[i]
+                end
+            end
+            sc:push(gen_ass(ret, gen_seq(exps)))
+        end
         if not kwargs.statement then
-            return gen_binexpr(self.op,
-                self.lhs:generate(sc, {}),
-                self.rhs:generate(sc, {}))
+            return ret
         end
     end,
 
     is_lvalue = function(self)
-        return false
+        return Ass_Ops[self.op] and true or false
+    end,
+
+    is_multret = function(self)
+        return (Ass_Ops[self.op] and self.lhs:is_multret())
     end,
 
     to_lua = function(self, i)
@@ -831,66 +871,6 @@ local Unary_Expr = Expr:clone {
     to_lua = function(self, i)
         return ("Unary_Expr(%q, %s)"):format(self.op,
             self.rhs:to_lua(i + 1))
-    end
-}
-
-local Pack_Expr
-
-local Ass_Expr = Expr:clone {
-    name = "Ass_Expr",
-
-    __init = function(self, ps, op, lhs, rhs)
-        Expr.__init(self, ps)
-        self.op, self.lhs, self.rhs = op, lhs, rhs
-    end,
-
-    generate = function(self, sc, kwargs)
-        local op, lhs = self.op, self.lhs
-
-        local lel = {}
-        if lhs:is_a(Pack_Expr) then
-            local pel = lhs.exprlist
-            for i = 1, #pel do
-                lel[i] = pel[i]:generate(sc, {})
-            end
-        end
-
-        local ret = gen_seq(lel)
-        if op == "=" then
-            sc:push(gen_ass(ret, self.rhs:generate(sc, {})))
-        else
-            local rhs = self.rhs
-            local el  = rhs.exprlist
-            local bop, exps = op:sub(1, #op - 1), {}
-            for i = 1, #el do
-                local le, ge = lel[i], el[i]:generate(sc, {})
-                exps[i] = le and gen_binexpr(bop, le, ge) or ge
-            end
-            local elen = #exps
-            local d = #lel - elen
-            if d > 0 then
-                for i = elen + 1, elen + d do
-                    exps[i] = lel[i]
-                end
-            end
-            sc:push(gen_ass(ret, gen_seq(exps)))
-        end
-        if not kwargs.statement then
-            return ret
-        end
-    end,
-
-    is_lvalue = function(self)
-        return true
-    end,
-
-    is_multret = function(self)
-        return self.lhs:is_multret()
-    end,
-
-    to_lua = function(self, i)
-        return ("Ass_Expr(%q, %s, %s)"):format(self.op,
-            self.lhs:to_lua(i + 1), self.rhs:to_lua(i + 1))
     end
 }
 
@@ -2987,7 +2967,7 @@ parse_binexpr = function(ls, mp)
         else
             el = { parse_expr(ls) }
         end
-        return Ass_Expr(ls, opn, lhs, Pack_Expr(ls, el))
+        return Binary_Expr(ls, opn, lhs, Pack_Expr(ls, el))
     end
 
     while true do
