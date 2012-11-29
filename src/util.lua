@@ -358,6 +358,92 @@ local Stack = Object:clone {
     end
 }
 
+local getopt = function(arglist, shortargs, longargs)
+    shortargs = shortargs or ""
+    longargs  = longargs  or {}
+    local len = #arglist
+    local opts, args = {}, {}
+
+    local vo = {}
+    for i = 1, #longargs do
+        local larg = longargs[i]
+        if larg:find(".+=") then
+            larg = larg:sub(1, #larg - 1)
+            vo[larg] = true
+        else
+            vo[larg] = false
+        end
+    end
+    for ch in shortargs:gmatch("([%w]:?)") do
+        if #ch == 2 then
+            vo[ch:sub(1, 1)] = true
+        else
+            vo[ch] = false
+        end
+    end
+
+    -- want_val: false coming from short arg, true from long arg, nil otherwise
+    local want_val, opt
+    for i = 1, len do
+        local str = arglist[i]
+
+        if want_val ~= nil then
+            opt[2] = str
+            opts[#opts + 1] = opt
+            opt, str, want_val = nil, nil, nil
+            goto getopt_cycle
+        end
+
+        -- try long arguments - the form --foo value, --foo=value, --foo
+        local mstr = str:match("^%-%-(.+)$")
+        if mstr then
+            local a, b = mstr:match("([%w-]+)=(.+)")
+            if not a then a = mstr end
+            opt = { a, b }
+
+            local valued = vo[a]
+            if valued == nil then
+                error("unrecognized option '--" .. a .. "'")
+            elseif valued == false and b then
+                error("option '--" .. a .. "' must not have an argument")
+            elseif valued == true and not b then
+                want_val = true
+            else
+                if not b then opt[2] = "" end
+                opts[#opts + 1] = opt
+                opt = nil
+            end
+            goto getopt_cycle
+        end
+
+        -- short arguments - the form -x, -x value
+        mstr = str:match("^%-(%w)$")
+        if mstr then
+            opt = { mstr }
+            local valued = vo[mstr]
+            if valued == nil then
+                error("invalid option -- " .. mstr)
+            elseif valued then
+                want_val = false
+            else
+                opt[2] = ""
+                opts[#opts + 1] = opt
+                opt = nil
+            end
+            goto getopt_cycle
+        end
+
+        args[#args + 1] = str
+        ::getopt_cycle::
+    end
+    if want_val == true then
+        error("option '--" .. opt[1] .. "' requires an argument")
+    elseif want_val == false then
+        error("option requires an argument -- " .. opt[1])
+    end
+    return opts, args
+end
+
 return {
     file_istream  = ifstream,
     file_ostream  = ofstream,
@@ -402,26 +488,7 @@ return {
     get_syms = get_syms,
     hash_sym = hash_sym,
 
-    parse_args = function(argv)
-        local ret = {}
-
-        local val = false
-        for i = 1, #argv do
-            local opt = argv[i]
-            if opt == "-o" then
-                val = true
-            elseif val then
-                opt:gsub("(.+)=(.+)", function(a, b)
-                    ret[#ret + 1] = { a, b }
-                end)
-                val = false
-            else
-                ret[#ret + 1] = opt
-            end
-        end
-
-        return ret
-    end,
+    getopt = getopt,
 
     map = function(tbl, fun)
         local r = {}

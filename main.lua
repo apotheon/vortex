@@ -28,55 +28,49 @@ local test_opt = function(section, field, value)
 end
 
 local compile_all = function(args)
-    args = util.parse_args(args)
+    local opts, args = util.getopt(args, "so:", { "stdout" })
 
-    local stdo = nil
-    for i = 1, #args do
-        local v = args[i]
-        if type(v) == "table" then
-            local key, val = v[1], v[2]
-            key:gsub("(.+)%.(.+)", function(a, b)
-                if not test_opt(a, b, val) then
-                    util.fatal("Invalid argument: -opt " .. key .. "=" .. val)
-                end
-                META[a][b] = val
-            end)
-        elseif v == "-stdout" then
+    local stdo
+    for i = 1, #opts do
+        local v = opts[i]
+        local key, val = v[1], v[2]
+        if key == "stdout" then
             stdo = true
+        end
+    end
+    for i = 1, #args do
+        local  ifname = args[i]
+        local  rs = io.open(ifname, "r")
+        if not rs then
+            io.stderr:write(ifname .. ": No such file or directory\n")
+            return 1
+        end
+
+        local ast  = parser.parse(ifname, util.file_istream(rs))
+        local code = parser.build(ast)
+        io.close(rs)
+
+        if stdo then
+            print("--- output for file " .. ifname .. " ---")
+            print(code)
         else
-            local  ifname = v
-            local  rs = io.open(ifname, "r")
-            if not rs then
-                io.stderr:write(ifname .. ": No such file or directory\n")
+            local  ofname
+            local  has_ext = ifname:find("%.vx")
+            if not has_ext then
+                ofname = ifname .. ".lua"
+            else
+                ofname = ifname:gsub("%.vx", ".lua")
+            end
+
+            local  ws = io.open(ofname, "w")
+            if not ws then
+                io.stderr:write("Cannot open " .. ofname ..
+                    " for writing.\n")
+                io.close(rs)
                 return 1
             end
-
-            local ast  = parser.parse(ifname, util.file_istream(rs))
-            local code = parser.build(ast)
-            io.close(rs)
-
-            if stdo then
-                print("--- output for file " .. ifname .. " ---")
-                print(code)
-            else
-                local  ofname
-                local  has_ext = ifname:find("%.vx")
-                if not has_ext then
-                    ofname = ifname .. ".lua"
-                else
-                    ofname = ifname:gsub("%.vx", ".lua")
-                end
-
-                local  ws = io.open(ofname, "w")
-                if not ws then
-                    io.stderr:write("Cannot open " .. ofname ..
-                        " for writing.\n")
-                    io.close(rs)
-                    return 1
-                end
-                ws:write(code)
-                io.close(ws)
-            end
+            ws:write(code)
+            io.close(ws)
         end
     end
 end

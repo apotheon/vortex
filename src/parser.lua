@@ -3,51 +3,47 @@ local util    = require("util")
 
 -- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
-    -- all the assignment operators have the same, lowest precedence
-    ["="  ] = { 2, 1 }, ["+=" ] = { 2, 1 }, ["-=" ] = { 2, 1 },
-    ["*=" ] = { 2, 1 }, ["/=" ] = { 2, 1 }, ["%=" ] = { 2, 1 },
-    ["++="] = { 2, 1 }, ["::="] = { 2, 1 }, ["**="] = { 2, 1 },
+    -- assignment ops are left out, they're right associative and have the
+    -- lowest precedence; we're leaving them out of the precedence parser
+    -- in order to gain flexibility and allow for pack exprs like in let.
 
-    -- bitwise assignment ops
-    ["band="] = { 2, 1 }, ["bor="] = { 2, 1 }, ["bxor="] = { 2, 1 },
-    ["asr=" ] = { 2, 1 }, ["bsr="] = { 2, 1 }, ["bsl=" ] = { 2, 1 },
-
-    -- followed by logical operators or, and
-    ["or"] = { 3, 3 }, ["and"] = { 4, 4 },
+    -- logical operators or, and
+    ["or"] = { 1, 1 }, ["and"] = { 2, 2 },
 
     -- eq / neq comparison
-    ["=="] = { 5, 5 }, ["!="] = { 5, 5 },
+    ["=="] = { 3, 3 }, ["!="] = { 3, 3 },
 
     -- other comparisons
-    ["<" ] = { 6, 6 }, ["<="] = { 6, 6 }, [">"] = { 6, 6 },
-    [">="] = { 6, 6 },
+    ["<" ] = { 4, 4 }, ["<="] = { 4, 4 }, [">"] = { 4, 4 },
+    [">="] = { 4, 4 },
 
     -- concat
-    ["~"] = { 8, 7 },
+    ["~"] = { 6, 5 },
 
     -- bitwise ops
-    ["bor"] = { 9,  9  }, ["bxor"] = { 10, 10 }, ["band"] = { 11, 11 },
-    ["asr"] = { 12, 12 }, ["bsr" ] = { 12, 12 }, ["bsl" ] = { 12, 12 },
+    ["bor"] = { 7,  7  }, ["bxor"] = { 8,  8  }, ["band"] = { 9,  9  },
+    ["asr"] = { 10, 10 }, ["bsr" ] = { 10, 10 }, ["bsl" ] = { 10, 10 },
 
     -- arithmetic ops
-    ["+"] = { 13, 13 }, ["-"] = { 13, 13 }, ["*"] = { 14, 14 },
-    ["/"] = { 14, 14 }, ["%"] = { 14, 14 },
+    ["+"] = { 11, 11 }, ["-"] = { 11, 11 }, ["*"] = { 12, 12 },
+    ["/"] = { 12, 12 }, ["%"] = { 12, 12 },
 
     -- join is left associative, cons is right associative
-    ["++"] = { 15, 15 }, ["::"] = { 16, 15 },
+    ["++"] = { 13, 13 }, ["::"] = { 14, 13 },
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
-    ["**"] = { 19, 18 }
+    ["**"] = { 17, 16 }
 }
 
 local Unary_Ops = {
-    ["-"  ] = 17, ["not"] = 17, ["#"  ] = 17, ["bnot"] = 17
+    ["-"  ] = 15, ["not"] = 15, ["#"  ] = 15, ["bnot"] = 15
 }
 
 local Ass_Ops = {
     ["="  ] = true, ["+=" ] = true, ["-=" ] = true, ["*=" ] = true,
-    ["/=" ] = true, ["%=" ] = true,
+    ["/=" ] = true, ["%=" ] = true, ["++="] = true, ["::="] = true,
+    ["**="] = true,
 
     ["band="] = true, ["bor="] = true, ["bxor="] = true,
     ["asr=" ] = true, ["bsr="] = true, ["bsl=" ] = true,
@@ -793,8 +789,7 @@ local New_Expr = Expr:clone {
     end
 }
 
-local Binary_Expr
-Binary_Expr = Expr:clone {
+local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
 
     __init = function(self, ps, op, lhs, rhs)
@@ -803,33 +798,14 @@ Binary_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        local op = self.op
-        if Ass_Ops[op] then
-            local lhs, sym = self.lhs, unique_sym("rhs")
-            local iv = lhs:generate(sc, {})
-            if op == "=" then
-                sc:push(gen_local(sym, self.rhs:generate(sc, {})))
-            else
-                sc:push(gen_local(sym, gen_binexpr(op:sub(1, #op - 1), iv,
-                    self.rhs:generate(sc, {}))))
-            end
-            sc:push(gen_ass(iv, sym))
-            if not kwargs.statement then
-                return sym, av
-            end
-        end
-
-        local lhs = self.lhs:generate(sc, {})
-        local rhs = self.rhs:generate(sc, {})
         if not kwargs.statement then
-            return gen_binexpr(self.op, lhs, rhs)
+            return gen_binexpr(self.op,
+                self.lhs:generate(sc, {}),
+                self.rhs:generate(sc, {}))
         end
     end,
 
     is_lvalue = function(self)
-        if Ass_Ops[self.op] then
-            return true
-        end
         return false
     end,
 
@@ -855,6 +831,66 @@ local Unary_Expr = Expr:clone {
     to_lua = function(self, i)
         return ("Unary_Expr(%q, %s)"):format(self.op,
             self.rhs:to_lua(i + 1))
+    end
+}
+
+local Pack_Expr
+
+local Ass_Expr = Expr:clone {
+    name = "Ass_Expr",
+
+    __init = function(self, ps, op, lhs, rhs)
+        Expr.__init(self, ps)
+        self.op, self.lhs, self.rhs = op, lhs, rhs
+    end,
+
+    generate = function(self, sc, kwargs)
+        local op, lhs = self.op, self.lhs
+
+        local lel = {}
+        if lhs:is_a(Pack_Expr) then
+            local pel = lhs.exprlist
+            for i = 1, #pel do
+                lel[i] = pel[i]:generate(sc, {})
+            end
+        end
+
+        local ret = gen_seq(lel)
+        if op == "=" then
+            sc:push(gen_ass(ret, self.rhs:generate(sc, {})))
+        else
+            local rhs = self.rhs
+            local el  = rhs.exprlist
+            local bop, exps = op:sub(1, #op - 1), {}
+            for i = 1, #el do
+                local le, ge = lel[i], el[i]:generate(sc, {})
+                exps[i] = le and gen_binexpr(bop, le, ge) or ge
+            end
+            local elen = #exps
+            local d = #lel - elen
+            if d > 0 then
+                for i = elen + 1, elen + d do
+                    exps[i] = lel[i]
+                end
+            end
+            sc:push(gen_ass(ret, gen_seq(exps)))
+        end
+        if not kwargs.statement then
+            return ret
+        end
+    end,
+
+    is_lvalue = function(self)
+        return true
+    end,
+
+    is_multret = function(self)
+        return self.lhs:is_multret()
+    end,
+
+    to_lua = function(self, i)
+        return ("Ass_Expr(%q, %s, %s)"):format(self.op,
+            self.lhs:to_lua(i + 1), self.rhs:to_lua(i + 1))
     end
 }
 
@@ -1699,7 +1735,7 @@ local Seq_Expr = Expr:clone {
     end
 }
 
-local Pack_Expr = Expr:clone {
+Pack_Expr = Expr:clone {
     name = "Pack_Expr",
 
     __init = function(self, ps, exprlist)
@@ -1718,6 +1754,16 @@ local Pack_Expr = Expr:clone {
     is_multret = function(self)
         return true
     end,
+
+    is_lvalue = function(self)
+        local el = self.exprlist
+        for i = 1, #el do
+            if not el[i]:is_lvalue() then
+                return false
+            end
+        end
+        return true
+    end
 }
 
 local Quote_Expr = Expr:clone {
@@ -2899,22 +2945,58 @@ local parse_simpleexpr = function(ls)
 end
 
 parse_binexpr = function(ls, mp)
-    local curr = ls.ndstack
+    local curr, tok = ls.ndstack, ls.token
     local len = #curr
     push_curline(ls)
+    push_curline(ls)
     mp = mp or 1
-    local lhs = parse_simpleexpr(ls)
+
+    local lhs
+    if tok.name == "(" then
+        ls:get()
+        local el = parse_exprlist(ls)
+        if #el == 1 then
+            ls.ndstack:pop()
+            lhs = el[1]
+        else
+            lhs = Pack_Expr(ls, el)
+        end
+        assert_tok(ls, ")")
+        ls:get()
+    else
+        lhs = parse_simpleexpr(ls)
+    end
+
+    local opn = tok.name
+    local aop = Ass_Ops[opn]
+    if lhs:is_a(Pack_Expr) and not aop then
+        syntax_error(ls, "unexpected symbol")
+    elseif aop then
+        if not lhs:is_lvalue() then
+            syntax_error(ls, "expected lvalue")
+        end
+        local op = tok.name
+        ls:get()
+        local el
+        push_curline(ls)
+        if tok.name == "(" then
+            ls:get()
+            el = parse_exprlist(ls)
+            assert_tok(ls, ")")
+            ls:get()
+        else
+            el = { parse_expr(ls) }
+        end
+        return Ass_Expr(ls, opn, lhs, Pack_Expr(ls, el))
+    end
+
     while true do
-        local cur = ls.token.name
+        local cur = tok.name
 
         local t = Binary_Ops[cur]
         if not cur or not t or t[1] < mp then break end
 
         local op, p1, p2 = cur, t[1], t[2]
-
-        if lhs and (Ass_Ops[op] and not lhs:is_lvalue()) then
-            syntax_error(ls, "expected lvalue")
-        end
 
         ls:get()
         local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
