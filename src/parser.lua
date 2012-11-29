@@ -815,6 +815,8 @@ local Binary_Expr = Expr:clone {
             for i = 1, #pel do
                 lel[i] = pel[i]:generate(sc, {})
             end
+        else
+            lel[1] = lhs:generate(sc, {})
         end
 
         local ret = gen_seq(lel)
