@@ -46,6 +46,15 @@ env.first = M.__vx_list_first
 env.rest  = M.__vx_list_rest
 env.map   = M.__vx_list_map
 
+-- the parser
+local parser = M.__vx_parser
+env.parser   = parser
+
+local pload = parser.load
+env.eval = function(str)
+    return pload(str)()
+end
+
 env._L       = _G
 env._G       = env
 env._R       = M

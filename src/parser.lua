@@ -3009,6 +3009,11 @@ parse_expr = function(ls)
 end
 
 local parse = function(fname, reader)
+    if not reader then
+        local str = fname
+        fname  = '[string \"' .. fname:match("[^\r\n]*"):sub(1, 63) .. '"]'
+        reader = util.string_stream(str)
+    end
     local ls = lexer.init(fname, reader)
     ls.ndstack, ls.fnstack, ls.lpstack = Stack(), Stack(), Stack()
     -- global scope
@@ -3055,7 +3060,12 @@ local build = function(ast)
     return concat(hdr, "\n") .. "\n" .. ms:build()
 end
 
+local loadstr = loadstring
+
 return {
     parse = parse,
-    build = build
+    build = build,
+    load  = function(str)
+        return loadstr(build(parse(str)))
+    end
 }
