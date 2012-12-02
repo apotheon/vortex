@@ -8,6 +8,8 @@
 
 local M = require("rt.core")
 
+local ipairs = ipairs
+
 local env = {}
 M.__vx_def_env = env
 
@@ -29,6 +31,8 @@ env.gcollect = M.__vx_gcollect
 env.type     = M.__vx_type
 env.pairs    = M.__vx_pairs
 env.ipairs   = M.__vx_ipairs
+env.setfenv  = M.__vx_env_set
+env.getfenv  = M.__vx_env_get
 
 env.unpack   = M.__vx_tbl_unpack
 
@@ -45,14 +49,32 @@ env.super = M.__vx_obj_super
 env.first = M.__vx_list_first
 env.rest  = M.__vx_list_rest
 env.map   = M.__vx_list_map
+env.dict  = function(tbl)
+    local r = {}
+    for i, v in ipairs(tbl) do
+        r[v[1]] = v[2]
+    end
+    return r
+end
+env.zip = function(a, b)
+    local r = {}
+    for i = 1, #a do
+        r[i] = { a[i], b[i] }
+    end
+    return r
+end
 
 -- the parser
 local parser = M.__vx_parser
 env.parser   = parser
 
-local pload = parser.load
-env.eval = function(str)
-    return pload(str)()
+local pload, envset = parser.load, env.setfenv
+env.eval = function(str, e)
+    if e then
+        return envset(pload(str, true), e)()
+    else
+        return pload(str)()
+    end
 end
 
 env._L       = _G

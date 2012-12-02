@@ -31,6 +31,7 @@ local keywords = {
     ["cycle" ] = true,
     ["do"    ] = true,
     ["else"  ] = true,
+    ["enum"  ] = true,
     ["false" ] = true,
     ["fn"    ] = true,
     ["for"   ] = true,
@@ -324,6 +325,8 @@ local read_string = function(ls, prefixes)
         if next_char(ls) == delim then
             next_char(ls)
             long = true
+        else
+            return ""
         end
     end
     local coro = cw(readstr)
@@ -506,7 +509,15 @@ lex = function(ls, token, instr)
 
         -- strings
         elseif curr == '"' or curr == "'" then
-            local rdr = str_readers:push(read_string(ls))
+            local r = read_string(ls)
+            if r == "" then
+                r = cw(function()
+                    cy("<string>", nil)
+                    cy("<string>", "")
+                    return "<string>", {}
+                end)
+            end
+            local rdr = str_readers:push(r)
             -- the "start" token
             return rdr()
 

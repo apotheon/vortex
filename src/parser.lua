@@ -261,6 +261,10 @@ local gen_goto = function(label)
     return "goto " .. label
 end
 
+local gen_string = function(str)
+    return '"' .. str .. '"'
+end
+
 local TAG_NUMBER  = 1
 local TAG_STRING  = 2
 local TAG_BOOLEAN = 3
@@ -1765,6 +1769,48 @@ local Quote_Expr = Expr:clone {
     end
 }
 
+local Enum_Expr = Expr:clone {
+    name = "Enum_Expr",
+
+    __init = function(self, ps, enum)
+        Expr.__init(self, ps)
+        self.enum = enum
+    end,
+
+    generate = function(self, sc, kwargs)
+        local sym = kwargs.assign
+        if sym then
+            sc:push(gen_ass(sym, gen_table(sc, {})))
+        else
+            sym = unique_sym("enum")
+            sc:push(gen_local(sym, gen_table(sc, {})))
+        end
+
+        local enum = self.enum
+        local isym, incr = unique_sym("enumi"), 1
+        local it = enum[1]
+        local name, expr = it[1], it[2]
+        if expr then
+            sc:push(gen_local(isym, expr:generate(sc, {})))
+        else
+            sc:push(gen_local(isym, incr - 1))
+        end
+        sc:push(gen_ass(gen_index(sym, gen_string(name)), isym))
+        for i = 2, #enum do
+            local it = enum[i]
+            local name, expr = it[1], it[2]
+            if expr then
+                sc:push(gen_ass(isym, expr:generate(sc, {})))
+                incr = 0
+            end
+            sc:push(gen_ass(gen_index(sym, gen_string(name)),
+                gen_binexpr("+", isym, incr)))
+            incr = incr + 1
+        end
+        return sym
+    end
+}
+
 Call_Expr = Expr:clone {
     name = "Call_Expr",
 
@@ -2285,6 +2331,44 @@ local parse_quote = function(ls)
     end
 
     return Quote_Expr(ls, parse_expr(ls))
+end
+
+local parse_enum = function(ls)
+    push_curline(ls)
+    ls:get()
+
+    local tok = ls.token
+    local curly = false
+    if tok.name == "{" then
+        ls:get()
+        if tok.name == "}" then
+            syntax_error("unexpected symbol")
+        end
+        curly = true
+    else
+        assert_tok(ls, "->")
+        ls:get()
+        assert_tok(ls, "(")
+        ls:get()
+    end
+
+    local t = {}
+    repeat
+        assert_tok(ls, "<ident>")
+        local name = tok.value
+        ls:get()
+        if tok.name == "=" then
+            ls:get()
+            t[#t + 1] = { name, parse_expr(ls) }
+        else
+            t[#t + 1] = { name, nil }
+        end
+    until tok.name ~= "," or ls:get() ~= "<ident>"
+
+    assert_tok(ls, curly and "}" or ")")
+    ls:get()
+
+    return Enum_Expr(ls, t)
 end
 
 local parse_if = function(ls)
@@ -2818,6 +2902,8 @@ local parse_simpleexpr = function(ls)
         return parse_sequence(ls)
     elseif name == "quote" then
         return parse_quote(ls)
+    elseif name == "enum" then
+        return parse_enum(ls)
     elseif name == "if" then
         return parse_if(ls)
     elseif name == "match" then
@@ -3030,10 +3116,10 @@ local parse = function(fname, reader)
     return ast
 end
 
-local build = function(ast)
+local build = function(ast, noenv)
     util.randomseed(os.clock() * os.time())
 
-    local ms = new_scope(Scope)
+    local ms = new_scope(Scope, nil, true)
     ms.data = {}
 
     local rts = unique_sym("rt")
@@ -3056,8 +3142,10 @@ local build = function(ast)
             statement = true
         })
     end
-    local se, de = get_rt_fun("env_set"), get_rt_fun("def_env")
-    hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
+    if not noenv then
+        local se, de = get_rt_fun("env_set"), env or get_rt_fun("def_env")
+        hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
+    end
 
     return concat(hdr, "\n") .. "\n" .. ms:build()
 end
@@ -3067,7 +3155,7 @@ local loadstr = loadstring
 return {
     parse = parse,
     build = build,
-    load  = function(str)
-        return loadstr(build(parse(str)))
+    load  = function(str, env)
+        return loadstr(build(parse(str), env))
     end
 }
