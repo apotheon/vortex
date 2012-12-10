@@ -1193,9 +1193,9 @@ local Table_Pattern = Expr:clone {
 local Cons_Pattern = Expr:clone {
     name = "Cons_Pattern",
 
-    __init = function(self, ps, head, tail, as, cond)
+    __init = function(self, ps, head, tail)
         Expr.__init(self, ps)
-        self.head, self.tail, self.cond, self.as = head, tail, cond, as
+        self.head, self.tail = head, tail
     end,
 
     generate = function(self, sc, kwargs)
@@ -1204,23 +1204,24 @@ local Cons_Pattern = Expr:clone {
         local head, tail, expr = self.head, self.tail, kwargs.expr
 
         if kwargs.decl then
-            sc:push(gen_local(gen_seq({ head, tail })))
+            head:generate(sc, { decl = true })
+            tail:generate(sc, { decl = true })
             return nil
         elseif kwargs.let then
-            local seq = gen_seq({ head, tail })
-            sc:push(gen_local(seq))
-            sc:push(gen_ass(h, gen_call(first, expr)))
-            sc:push(gen_ass(t, gen_call(last,  expr)))
-            return seq
+            local h  = head:generate(sc, { let = true,
+                expr = gen_call(first, expr) })
+            local t  = tail:generate(sc, { let = true,
+                expr = gen_call(rest, expr) })
+
+            return gen_seq({ h, t })
         end
 
         local ts = new_scope(sc)
         ts:push(gen_goto(kwargs.next_arm))
         sc:push(gen_if(gen_binexpr("!=", gen_call(tfun, expr),
             gen_str("table")), ts))
-        sc:push(gen_local(head, gen_call(first, expr)))
-        sc:push(gen_if(gen_binexpr("==", head, "nil"), ts))
-        sc:push(gen_local(tail, gen_call(rest,  expr)))
+        head:generate(sc, { expr = gen_call(first, expr) })
+        tail:generate(sc, { expr = gen_call(rest,  expr) })
     end
 }
 
@@ -2371,6 +2372,111 @@ local parse_enum = function(ls)
     return Enum_Expr(ls, t)
 end
 
+local parse_when = function(ls, let)
+    if let then return nil end
+    if ls.token.name == "when" then
+        ls:get()
+        return parse_expr(ls)
+    end
+end
+
+local parse_as = function(ls, let)
+    if let then return nil end
+    local tok = ls.token
+    if tok.name == "as" then
+        ls:get()
+        assert_tok(ls, "<ident>")
+        local v = tok.value
+        ls:get()
+        return Symbol_Expr(nil, v)
+    end
+end
+
+local parse_data = function(ls)
+    push_curline(ls)
+    ls:get()
+
+    local tok = ls.token
+    local curly = false
+    if tok.name == "{" then
+        ls:get()
+        if tok.name == "}" then
+            syntax_error(ls, "unexpected symbol")
+        end
+        curly = true
+    else
+        assert_tok(ls, "->")
+        ls:get()
+    end
+
+    local t = {}
+    while true do
+        local flag
+        if tok.name == "glob" then
+            flag = tok.name
+            ls:get()
+        end
+        assert_tok(ls, "<ident>")
+        local cname = tok.value
+        ls:get()
+
+        local mb = {}
+        local case = { cname, flag, mb }
+        if tok.name == "of" then
+            ls:get()
+            assert_tok(ls, "(")
+            ls:get()
+
+            local idx = 1
+            repeat
+                if tok.name == "<ident>" and ls:lookahead() == ":" then
+                    local name = Value_Expr(nil, TAG_STRING, tok.value)
+                    ls:get() ls:get()
+                    local tp
+                    if tok.name ~= "_" then
+                        tp = parse_expr(ls)
+                    end
+                    ls:get()
+                    mb[#mb + 1] = { name, tp, parse_as(ls), parse_when(ls) }
+                elseif tok.name == "$" then
+                    local expr = parse_expr(ls)
+                    if tok.name == ":" then
+                        ls:get()
+                        mb[#mb + 1] = { expr, parse_expr(ls), parse_as(ls),
+                            parse_when(ls) }
+                    else
+                        mb[#mb + 1] = { idx, expr, parse_as(ls),
+                            parse_when(ls) }
+                        idx = idx + 1
+                    end
+                else
+                    mb[#mb + 1] = { idx, parse_expr(ls), parse_as(ls),
+                        parse_when(ls) }
+                    idx = idx + 1
+                end
+                if tok.name ~= "," then
+                    assert_tok(ls, ")")
+                else
+                    ls:get()
+                end
+            until tok.name == ")"
+            ls:get()
+        end
+        t[#t + 1] = mb
+        if tok.name ~= "|" then
+            break
+        end
+        ls:get()
+    end
+
+    if curly then
+        assert_tok(ls, "}")
+        ls:get()
+    end
+
+    return Data_Expr(ls, t)
+end
+
 local parse_if = function(ls)
     push_curline(ls)
     ls:get()
@@ -2420,26 +2526,6 @@ local parse_if = function(ls)
     return If_Expr(ls, cond, tval, nil)
 end
 
-local parse_when = function(ls, let)
-    if let then return nil end
-    if ls.token.name == "when" then
-        ls:get()
-        return parse_expr(ls)
-    end
-end
-
-local parse_as = function(ls, let)
-    if let then return nil end
-    local tok = ls.token
-    if tok.name == "as" then
-        ls:get()
-        assert_tok(ls, "<ident>")
-        local v = tok.value
-        ls:get()
-        return Symbol_Expr(nil, v)
-    end
-end
-
 local parse_table_pattern
 
 parse_pattern = function(ls, let)
@@ -2462,14 +2548,6 @@ parse_pattern = function(ls, let)
         push_curline(ls)
         local v = tok.value
         ls:get()
-        if tok.name == "::" then
-            ls:get()
-            assert_tok(ls, "<ident>")
-            local v2 = tok.value
-            ls:get()
-            return Cons_Pattern(ls, v, v2, parse_as(ls, let),
-                parse_when(ls, let))
-        end
         if v == "_" then
             return Wildcard_Pattern(ls, parse_as(ls, let),
                 parse_when(ls, let))
@@ -2524,7 +2602,8 @@ parse_table_pattern = function(ls, let)
 end
 
 local Pattern_Ops = {
-    ["or"] = { 1, Or_Pattern }, ["and"] = { 2, And_Pattern }
+    ["or"] = { 1, Or_Pattern }, ["and"] = { 2, And_Pattern },
+    ["::"] = { 3, Cons_Pattern }
 }
 
 local parse_patternprec

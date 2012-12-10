@@ -64,7 +64,7 @@ env.zip = function(a, b)
     return r
 end
 
--- the parser
+--[[ the parser
 local parser = M.__vx_parser
 env.parser   = parser
 
@@ -76,7 +76,7 @@ env.eval = function(str, e)
         return pload(str)()
     end
 end
-
+]]
 env._L       = _G
 env._G       = env
 env._R       = M

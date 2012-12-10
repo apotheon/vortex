@@ -14,7 +14,8 @@ local Meta = {
 }
 local meta_n = #Meta
 
-local error, rawset, setmt = error, rawget, setmetatable
+local error, rawequal, rawget, rawset, setmt
+    = error, rawequal, rawget, rawset, setmetatable
 
 local Object = {
 }
@@ -47,6 +48,20 @@ for i = 1, #Meta do
     end
     Object[n] = mtfn
 end
+
+-- sort of inefficient variant, make non-recursive later?
+local is_a; is_a = function(self, base)
+    if rawequal(self, base) then return true end
+    local pts = rawget(self, "__protos")
+    if not pts then return false end
+    for i = 1, #pts do
+        if is_a(pts[i], base) then
+            return true
+        end
+    end
+    return false
+end
+Object.is_a = is_a
 
 local clone = function(tbl, ...)
     local protos = { ... }
