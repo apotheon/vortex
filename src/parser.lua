@@ -710,15 +710,15 @@ local List_Expr = Expr:clone {
 local Object_Expr = Expr:clone {
     name = "Object_Expr",
 
-    __init = function(self, ps, parents, body)
+    __init = function(self, ps, parents, ctor, body)
         Expr.__init(self, ps)
-        self.parents, self.body = parents, body
+        self.parents, self.ctor, self.body = parents, ctor, body
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
 
-        local pars, body = self.parents, self.body
+        local pars, body, ctor = self.parents, self.body, self.ctor
         local syms, len = {}, #pars
         for i = 1, len do
             if i == len then
@@ -731,6 +731,22 @@ local Object_Expr = Expr:clone {
         end
 
         local fun, kvs = get_rt_fun("obj_clone"), {}
+        if ctor then
+            local assrt = gen_rt_fun("assert")
+            local pars = {}
+            local ns = new_scope(sc)
+            for i = 1, #ctor do
+                local it = ctor[i]
+                local name = it[1]
+                pars[i] = name
+                local cond = it[2]
+                if cond then
+                    ns:push(gen_call(assrt, cond:generate(ns, {})))
+                end
+                ns:push(gen_ass(gen_index("self", name), name))
+            end
+            kvs[#kvs + 1] = gen_ass("__init", gen_fun(gen_seq(pars), ns))
+        end
         for i = 1, #body do
             local pair = body[i]
             local ke, ve = pair[1], pair[2]
@@ -2443,91 +2459,6 @@ local parse_as = function(ls, let)
     end
 end
 
-local parse_data = function(ls)
-    push_curline(ls)
-    ls:get()
-
-    local tok = ls.token
-    local curly = false
-    if tok.name == "{" then
-        ls:get()
-        if tok.name == "}" then
-            syntax_error(ls, "unexpected symbol")
-        end
-        curly = true
-    else
-        assert_tok(ls, "->")
-        ls:get()
-    end
-
-    local t = {}
-    while true do
-        local flag
-        if tok.name == "glob" then
-            flag = tok.name
-            ls:get()
-        end
-        assert_tok(ls, "<ident>")
-        local cname = tok.value
-        ls:get()
-
-        local mb = {}
-        local case = { cname, flag, mb }
-        if tok.name == "of" then
-            ls:get()
-            assert_tok(ls, "(")
-            ls:get()
-
-            local idx = 1
-            repeat
-                if tok.name == "<ident>" and ls:lookahead() == ":" then
-                    local name = Value_Expr(nil, TAG_STRING, tok.value)
-                    ls:get() ls:get()
-                    local tp
-                    if tok.name ~= "_" then
-                        tp = parse_expr(ls)
-                    end
-                    ls:get()
-                    mb[#mb + 1] = { name, tp, parse_as(ls), parse_when(ls) }
-                elseif tok.name == "$" then
-                    local expr = parse_expr(ls)
-                    if tok.name == ":" then
-                        ls:get()
-                        mb[#mb + 1] = { expr, parse_expr(ls), parse_as(ls),
-                            parse_when(ls) }
-                    else
-                        mb[#mb + 1] = { idx, expr, parse_as(ls),
-                            parse_when(ls) }
-                        idx = idx + 1
-                    end
-                else
-                    mb[#mb + 1] = { idx, parse_expr(ls), parse_as(ls),
-                        parse_when(ls) }
-                    idx = idx + 1
-                end
-                if tok.name ~= "," then
-                    assert_tok(ls, ")")
-                else
-                    ls:get()
-                end
-            until tok.name == ")"
-            ls:get()
-        end
-        t[#t + 1] = mb
-        if tok.name ~= "|" then
-            break
-        end
-        ls:get()
-    end
-
-    if curly then
-        assert_tok(ls, "}")
-        ls:get()
-    end
-
-    return Data_Expr(ls, t)
-end
-
 local parse_if = function(ls)
     push_curline(ls)
     ls:get()
@@ -2912,12 +2843,34 @@ local parse_object = function(ls)
         el = { parse_expr(ls, true) }
     end
 
+    -- implicit constructors
+    local cargs
+    if tok.name == "(" then
+        ls:get()
+
+        cargs = {}
+        repeat
+            assert_tok(ls, "<ident>")
+            local v = tok.value
+            ls:get()
+            cargs[#cargs + 1] = { v, parse_when(ls) }
+        until ls:get() ~= "," or ls:get() ~= "<ident>"
+
+        assert_tok(ls, ")")
+        ls:get()
+
+        if tok.name ~= "{" then
+            return Object_Expr(ls, el and el or {
+                Symbol_Expr(nil, "obj_def", true) }, cargs, {})
+        end
+    end
+
     assert_tok(ls, "{")
     ls:get()
     if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, "obj_def", true) }, {})
+            Symbol_Expr(nil, "obj_def", true) }, cargs, {})
     end
 
     local tbl = {}
@@ -2945,7 +2898,7 @@ local parse_object = function(ls)
     assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, "obj_def", true) }, tbl)
+            Symbol_Expr(nil, "obj_def", true) }, cargs, tbl)
 end
 
 local parse_new = function(ls)
