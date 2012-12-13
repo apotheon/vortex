@@ -10,7 +10,7 @@ require "rt.table"
 require "rt.list"
 require "rt.seq"
 require "rt.object"
---require "rt.parser"
+require "rt.parser"
 require "rt.defenv"
 
 return M
