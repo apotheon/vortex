@@ -62,6 +62,7 @@ local is_a; is_a = function(self, base)
     return false
 end
 Object.is_a = is_a
+M.__vx_obj_is_a = is_a
 
 local clone = function(tbl, ...)
     local protos = { ... }

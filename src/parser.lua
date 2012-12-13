@@ -1158,6 +1158,8 @@ local Table_Pattern = Expr:clone {
                 local k, v = it[1], it[2]
                 if type(k) == "number" then
                     mn = mn + 1
+                else
+                    k = k:generate(sc, {})
                 end
                 local el = gen_index(expr, k)
                 ret[i] = v:generate(sc, { expr = el, let = true,
@@ -1172,6 +1174,8 @@ local Table_Pattern = Expr:clone {
             local k, v = it[1], it[2]
             if type(k) == "number" then
                 mn = mn + 1
+            else
+                k = k:generate(sc, {})
             end
             local el = gen_index(expr, k)
             local pv = v:generate(ns, { expr = el,
@@ -1187,6 +1191,53 @@ local Table_Pattern = Expr:clone {
         sc:merge(ns)
 
         return ret
+    end
+}
+
+local Object_Pattern = Expr:clone {
+    name = "Object_Pattern",
+
+    __init = function(self, ps, expr, contents, as, cond)
+        Expr.__init(self, ps)
+        self.expr, self.contents, self.cond, self.as = expr, contents, cond, as
+    end,
+
+    generate = function(self, sc, kwargs)
+        local tbl = self.contents
+        if kwargs.decl then
+            local exs = {}
+            for i = 1, #tbl do
+                exs[i] = tbl[i][1]:generate(sc, {})
+            end
+            sc:push(gen_local(gen_seq(exs)))
+            return nil
+        elseif kwargs.let then
+            local expr, exs = kwargs.expr, {}
+            for i = 1, #tbl do
+                local it = tbl[i]
+                local n, k = it[1]:generate(sc, {}), it[2]:generate(sc, {})
+                sc:push(gen_local(n, gen_index(expr, k)))
+                exs[i] = n
+            end
+            return gen_seq(exs)
+        end
+
+        local ns = new_scope(sc, nil, true)
+        local expr, nl = kwargs.expr, kwargs.no_local
+        for i = 1, #tbl do
+            local it = tbl[i]
+            local n, k = it[1]:generate(sc, {}), it[2]:generate(sc, {})
+            ns:push((nl and gen_ass or gen_local)(n, gen_index(expr, k)))
+        end
+
+        local tfun, isafun = get_rt_fun("type"), get_rt_fun("obj_is_a")
+        local ts = new_scope(sc)
+        ts:push(gen_goto(kwargs.next_arm))
+        sc:push(gen_if(gen_binexpr("or",
+            gen_binexpr("!=", gen_call(tfun, expr), gen_str("table")),
+            gen_unexpr("not", gen_call(isafun, gen_seq({ expr,
+                self.expr:generate(sc, {}) })))), ts))
+        sc:merge(ns)
     end
 }
 
@@ -2526,7 +2577,65 @@ local parse_if = function(ls)
     return If_Expr(ls, cond, tval, nil)
 end
 
-local parse_table_pattern
+local parse_compound_pattern = function(ls, let)
+    local tok, tbl, idx = ls.token, {}, 1
+    repeat
+        if tok.name == "<ident>" and ls:lookahead() == ":" then
+            local name = Value_Expr(nil, TAG_STRING, tok.value)
+            ls:get() ls:get()
+            tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
+        elseif tok.name == "$" then
+            local expr = parse_expr(ls)
+            assert_tok(ls, ":")
+            ls:get()
+            tbl[#tbl + 1] = { expr, parse_pattern(ls, let) }
+        else
+            tbl[#tbl + 1] = { idx, parse_pattern(ls, let) }
+            idx = idx + 1
+        end
+    until tok.name ~= "," or not ls:get()
+    return tbl
+end
+
+local parse_table_pattern = function(ls, let)
+    push_curline(ls)
+    ls:get()
+    local tok = ls.token
+
+    if tok.name == "]" then
+        ls:get()
+        return Table_Pattern(ls, {}, parse_as(ls, let), parse_when(ls, let))
+    end
+
+    local tbl = parse_compound_pattern(ls, let)
+    assert_tok(ls, "]")
+    ls:get()
+
+    return Table_Pattern(ls, tbl, parse_as(ls, let), parse_when(ls, let))
+end
+
+local parse_object_pattern = function(ls)
+    local tok, tbl = ls.token, {}
+    repeat
+        assert_tok(ls, "<ident>")
+        local name = tok.value
+        ls:get()
+        local ex
+        if tok.name == ":" then
+            ls:get()
+            if tok.name == "$" then
+                ex = parse_expr(ls)
+            else
+                assert_tok(ls, "<ident>")
+                ex = Value_Expr(nil, TAG_STRING, tok.value)
+                ls:get()
+            end
+        end
+        tbl[#tbl + 1] = { Symbol_Expr(nil, name),
+            ex or Value_Expr(nil, TAG_STRING, name) }
+    until tok.name ~= "," or not ls:get()
+    return tbl
+end
 
 parse_pattern = function(ls, let)
     local tok = ls.token
@@ -2537,6 +2646,14 @@ parse_pattern = function(ls, let)
         local exp
         if tn == "$" then
             exp = parse_expr(ls)
+            if tok.name == "(" then
+                ls:get()
+                local tbl = parse_compound_pattern(ls, let)
+                assert_tok(ls, ")")
+                ls:get()
+                return Object_Pattern(ls, exp, tbl,
+                    parse_as(ls), parse_when(ls))
+            end
         else
             push_curline(ls)
             local v = tok.value or tn
@@ -2551,6 +2668,13 @@ parse_pattern = function(ls, let)
         if v == "_" then
             return Wildcard_Pattern(ls, parse_as(ls, let),
                 parse_when(ls, let))
+        elseif tok.name == "(" then
+            ls:get()
+            local tbl = parse_object_pattern(ls)
+            assert_tok(ls, ")")
+            ls:get()
+            return Object_Pattern(ls, Symbol_Expr(nil, v), tbl,
+                parse_as(ls), parse_when(ls))
         else
             return Variable_Pattern(ls, v, parse_as(ls, let),
                 parse_when(ls, let))
@@ -2560,45 +2684,6 @@ parse_pattern = function(ls, let)
     else
         syntax_error(ls, "pattern expected")
     end
-end
-
-parse_table_pattern = function(ls, let)
-    push_curline(ls)
-    ls:get()
-    local tok, tbl = ls.token, {}
-
-    if tok.name == "]" then
-        ls:get()
-        return Table_Pattern(ls, {}, parse_as(ls, let), parse_when(ls, let))
-    end
-
-    local tok = ls.token
-    local idx = 1
-    repeat
-        if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, TAG_STRING, tok.value)
-            ls:get() ls:get()
-            tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
-        elseif tok.name == "$" then
-            local expr = parse_expr(ls)
-            assert_tok(ls, "=")
-            ls:get()
-            tbl[#tbl + 1] = { expr, parse_pattern(ls, let) }
-        else
-            tbl[#tbl + 1] = { idx, parse_pattern(ls, let) }
-            idx = idx + 1
-        end
-        if tok.name ~= "," then
-            assert_tok(ls, "]")
-        else
-            ls:get()
-        end
-    until tok.name == "]"
-
-    assert_tok(ls, "]")
-    ls:get()
-
-    return Table_Pattern(ls, tbl, parse_as(ls, let), parse_when(ls, let))
 end
 
 local Pattern_Ops = {
