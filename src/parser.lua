@@ -2622,9 +2622,10 @@ parse_pattern = function(ls, let)
     end
 end
 
+-- cons pattern is right associative
 local Pattern_Ops = {
-    ["or"] = { 1, Or_Pattern }, ["and"] = { 2, And_Pattern },
-    ["::"] = { 3, Cons_Pattern }
+    ["or"] = { 1, 1, Or_Pattern }, ["and"] = { 2, 2, And_Pattern },
+    ["::"] = { 4, 3, Cons_Pattern }
 }
 
 local parse_patternprec
@@ -2653,8 +2654,9 @@ parse_patternprec = function(ls, mp)
         local t = Pattern_Ops[cur]
         if not cur or not t or t[1] < mp then break end
         ls:get()
-        local rhs = parse_patternprec(ls, t[1])
-        lhs = t[2](ls, lhs, rhs)
+        local p1, p2 = t[1], t[2]
+        local rhs = parse_patternprec(ls, p1 > p2 and p1 or p2)
+        lhs = t[3](ls, lhs, rhs)
         push_curline(ls)
     end
     for i = 1, #curr - len do curr:pop() end
