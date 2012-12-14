@@ -219,6 +219,10 @@ local gen_index = function(sym, idx)
     return concat { sym, "[", idx, "]" }
 end
 
+local gen_dindex = function(sym, idx)
+    return concat { sym, ".", idx }
+end
+
 local gen_table = function(sc, t)
     local ind = (" "):rep((sc.indent + 1) * META.cgen.indent)
     local tbl = { "{\n" }
@@ -732,18 +736,19 @@ local Object_Expr = Expr:clone {
 
         local fun, kvs = get_rt_fun("obj_clone"), {}
         if ctor then
-            local assrt = gen_rt_fun("assert")
-            local pars = {}
+            local assrt = get_rt_fun("assert")
+            local pars = { "self", }
             local ns = new_scope(sc)
+            ns.indent = ns.indent + 1
             for i = 1, #ctor do
                 local it = ctor[i]
                 local name = it[1]
-                pars[i] = name
+                pars[i + 1] = name
                 local cond = it[2]
                 if cond then
                     ns:push(gen_call(assrt, cond:generate(ns, {})))
                 end
-                ns:push(gen_ass(gen_index("self", name), name))
+                ns:push(gen_ass(gen_dindex("self", name), name))
             end
             kvs[#kvs + 1] = gen_ass("__init", gen_fun(gen_seq(pars), ns))
         end
@@ -2601,7 +2606,7 @@ parse_pattern = function(ls, let)
                 parse_when(ls, let))
         elseif tok.name == "(" then
             ls:get()
-            local tbl = parse_object_pattern(ls)
+            local tbl = (tok.name == ")") and {} or parse_object_pattern(ls)
             assert_tok(ls, ")")
             ls:get()
             return Object_Pattern(ls, Symbol_Expr(nil, v), tbl,
@@ -2840,7 +2845,7 @@ local parse_object = function(ls)
         assert_tok(ls, ")")
         ls:get()
     elseif tok.name ~= "{" then
-        el = { parse_expr(ls, true) }
+        el = { parse_primaryexpr(ls) }
     end
 
     -- implicit constructors
@@ -2854,7 +2859,7 @@ local parse_object = function(ls)
             local v = tok.value
             ls:get()
             cargs[#cargs + 1] = { v, parse_when(ls) }
-        until ls:get() ~= "," or ls:get() ~= "<ident>"
+         until tok.name ~= "," or ls:get() ~= "<ident>"
 
         assert_tok(ls, ")")
         ls:get()
