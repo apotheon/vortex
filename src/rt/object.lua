@@ -10,44 +10,70 @@ local M = require("rt.core")
 
 local Meta = {
     "__add", "__call", "__concat", "__div", "__eq", "__le", "__len", "__lt",
-    "__mul", "__pow", "__sub", "__unm", "__tostring"
+    "__mul", "__pow", "__sub", "__unm"
 }
 local meta_n = #Meta
 
-local error, rawequal, rawget, rawset, setmt
-    = error, rawequal, rawget, rawset, setmetatable
+local error, rawequal, rawget, rawset, setmt, next
+    = error, rawequal, rawget, rawset, setmetatable, next
 
 local Object = {
 }
 
+local mtfn
+
 for i = 1, #Meta do
     local n = Meta[i]
-    local mtfn
-    if n == "__tostring" then
-        mtfn = function(self, ...)
-            local protos = rawget(self, "__protos")
-            for i = 1, #protos do
-                local v = protos[i][n]
-                if v ~= mtfn then
-                    return v(self, ...)
-                end
+    mtfn = function(self, ...)
+        local protos = rawget(self, "__protos")
+        for i = 1, #protos do
+            local v = protos[i][n]
+            if v ~= mtfn then
+                return v(self, ...)
             end
-            return "object"
         end
-    else
-        mtfn = function(self, ...)
-            local protos = rawget(self, "__protos")
-            for i = 1, #protos do
-                local v = protos[i][n]
-                if v ~= mtfn then
-                    return v(self, ...)
-                end
-            end
-            error("metamethod not implemented: " .. n)
-        end
+        error("metamethod not implemented: " .. n)
     end
     Object[n] = mtfn
 end
+
+mtfn = function(self)
+    local protos = rawget(self, "__protos")
+    for i = 1, #protos do
+        local v = protos[i][n]
+        if v ~= mtfn then
+            return v(self)
+        end
+    end
+    return "object"
+end
+Object["__tostring"] = mtfn
+
+mtfn = function(self)
+    local protos = rawget(self, "__protos")
+    for i = 1, #protos do
+        local v = protos[i][n]
+        if v ~= mtfn then
+            return v(self)
+        end
+    end
+    return next, self, nil
+end
+Object["__pairs"] = mtfn
+
+-- can be anything, we just need to get the function
+local ipfun = ipairs(Object)
+mtfn = function(self)
+    local protos = rawget(self, "__protos")
+    for i = 1, #protos do
+        local v = protos[i][n]
+        if v ~= mtfn then
+            return v(self)
+        end
+    end
+    return ipfun, self, 0
+end
+Object["__ipairs"] = mtfn
 
 -- sort of inefficient variant, make non-recursive later?
 local is_a; is_a = function(self, base)
