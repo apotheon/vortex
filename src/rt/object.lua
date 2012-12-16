@@ -20,10 +20,9 @@ local error, rawequal, rawget, rawset, setmt, next
 local Object = {
 }
 
-local mtfn
-
 for i = 1, #Meta do
     local n = Meta[i]
+    local mtfn
     mtfn = function(self, ...)
         local protos = rawget(self, "__protos")
         for i = 1, #protos do
@@ -37,43 +36,46 @@ for i = 1, #Meta do
     Object[n] = mtfn
 end
 
-mtfn = function(self)
+local tostrfn
+tostrfn = function(self)
     local protos = rawget(self, "__protos")
     for i = 1, #protos do
-        local v = protos[i][n]
-        if v ~= mtfn then
+        local v = protos[i]["__tostring"]
+        if v ~= tostrfn then
             return v(self)
         end
     end
     return "object"
 end
-Object["__tostring"] = mtfn
+Object["__tostring"] = tostrfn
 
-mtfn = function(self)
+local pairsfn
+pairsfn = function(self)
     local protos = rawget(self, "__protos")
     for i = 1, #protos do
-        local v = protos[i][n]
-        if v ~= mtfn then
+        local v = protos[i]["__pairs"]
+        if v ~= pairsfn then
             return v(self)
         end
     end
     return next, self, nil
 end
-Object["__pairs"] = mtfn
+Object["__pairs"] = pairsfn
 
 -- can be anything, we just need to get the function
 local ipfun = ipairs(Object)
-mtfn = function(self)
+local ipairsfn
+ipairsfn = function(self)
     local protos = rawget(self, "__protos")
     for i = 1, #protos do
-        local v = protos[i][n]
-        if v ~= mtfn then
+        local v = protos[i]["__ipairs"]
+        if v ~= ipairsfn then
             return v(self)
         end
     end
     return ipfun, self, 0
 end
-Object["__ipairs"] = mtfn
+Object["__ipairs"] = ipairsfn
 
 -- sort of inefficient variant, make non-recursive later?
 local is_a; is_a = function(self, base)
@@ -100,6 +102,9 @@ local clone = function(tbl, ...)
             tbl[n] = Object[n]
         end
     end
+    if not tbl["__tostring"] then tbl["__tostring"] = Object["__tostring"] end
+    if not tbl["__pairs"   ] then tbl["__pairs"   ] = Object["__pairs"   ] end
+    if not tbl["__upairs"  ] then tbl["__ipairs"  ] = Object["__ipairs"  ] end
 
     tbl.__index = function(self, n)
         local v = rawget(self, n)
