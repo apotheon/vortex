@@ -2069,7 +2069,7 @@ local parse_table = function(ls)
             local name = Value_Expr(nil, TAG_STRING, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
-        elseif tok.name == "$" then
+        elseif tok.name == "$" or tok.name == "$(" then
             local expr = parse_expr(ls)
             if tok.name == "=" then
                 ls:get()
@@ -2520,7 +2520,7 @@ local parse_compound_pattern = function(ls, let)
             local name = Value_Expr(nil, TAG_STRING, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
-        elseif tok.name == "$" then
+        elseif tok.name == "$" or tok.name == "$(" then
             local expr = parse_expr(ls)
             assert_tok(ls, ":")
             ls:get()
@@ -2559,7 +2559,7 @@ local parse_object_pattern = function(ls)
         local ex
         if tok.name == ":" then
             ls:get()
-            if tok.name == "$" then
+            if tok.name == "$" or tok.name == "$(" then
                 ex = parse_expr(ls)
             else
                 assert_tok(ls, "<ident>")
@@ -2576,11 +2576,11 @@ end
 parse_pattern = function(ls, let)
     local tok = ls.token
     local tn  = tok.name
-    if (tn == "$" or tn == "<string>" or tn == "<number>"
+    if (tn == "$" or tn == "$(" or tn == "<string>" or tn == "<number>"
     or  tn == "true" or tn == "false" or tn == "nil") and not let then
         push_curline(ls)
         local exp
-        if tn == "$" then
+        if tn == "$" or tn == "$(" then
             exp = parse_expr(ls)
             if tok.name == "(" then
                 ls:get()
@@ -2891,7 +2891,7 @@ local parse_object = function(ls)
             ls:get()
             tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         else
-            assert_tok(ls, "$")
+            assert_tok(ls, "$", "$(")
             local kexpr = parse_expr(ls)
             assert_tok(ls, "=")
             ls:get()
@@ -3108,7 +3108,7 @@ local parse_simpleexpr = function(ls)
                 end
                 -- consume next "start" token
                 ls:get()
-            elseif tn == "$" then
+            elseif tn == "$" or tn == "$(" then
                 exprs[#exprs + 1] = parse_expr(ls)
                 value = value and (value .. "%s") or "%s"
             else
@@ -3204,13 +3204,12 @@ parse_expr = function(ls)
     local tok = ls.token
     if tok.name == "$" then
         ls:get()
-        if tok.name == "<ident>" then
-            push_curline(ls)
-            local v = tok.value
-            ls:get()
-            return Symbol_Expr(ls, v)
-        end
-        assert_tok(ls, "(")
+        assert_tok(ls, "<ident>")
+        push_curline(ls)
+        local v = tok.value
+        ls:get()
+        return Symbol_Expr(ls, v)
+    elseif tok.name == "$(" then
         ls:get()
         local expr = parse_binexpr(ls)
         assert_tok(ls, ")")

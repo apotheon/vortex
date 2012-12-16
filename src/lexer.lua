@@ -507,6 +507,18 @@ lex = function(ls, token, instr)
             next_char(ls)
             return "::"
 
+        -- $ or $(
+        elseif curr == "$" then
+            next_char(ls)
+            if ls.current ~= "(" then
+                if not is_ident(ls.current) then
+                    lex_error(ls, "expected identifier", "$")
+                end
+                return "$"
+            end
+            next_char(ls)
+            return "$("
+
         -- strings
         elseif curr == '"' or curr == "'" then
             local r = read_string(ls)
