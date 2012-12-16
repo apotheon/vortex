@@ -1647,7 +1647,7 @@ local For_Expr = Expr:clone {
             statement = true,
             no_scope  = true
         })
-        bsc:push(gen_goto(lbeg))
+        bsc:push(gen_goto(linc))
         bsc:push(gen_label(lend))
 
         sc:push(gen_block(bsc))
