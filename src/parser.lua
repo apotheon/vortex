@@ -1533,6 +1533,7 @@ local While_Expr = Expr:clone {
         local lbeg, lend = lbl .. "_beg", lbl .. "_end"
         bsc.data = {
             loop_start = lbeg,
+            loop_inc   = lbeg,
             loop_end   = lend
         }
         bsc:push(gen_label(lbeg))
@@ -1576,6 +1577,7 @@ local Do_While_Expr = Expr:clone {
         local lbeg, lend = lbl .. "_beg", lbl .. "_end"
         bsc.data = {
             loop_start = lbeg,
+            loop_inc   = lbeg,
             loop_end   = lend
         }
         bsc:push(gen_label(lbeg))
@@ -1617,9 +1619,10 @@ local For_Expr = Expr:clone {
             = unique_sym("f"), unique_sym("s"), unique_sym("var")
 
         local lbl = unique_sym("lbl")
-        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        local lbeg, linc, lend = lbl .. "_beg", lbl .. "_inc", lbl .. "_end"
         bsc.data = {
             loop_start = lbeg,
+            loop_inc   = linc,
             loop_end   = lend
         }
 
@@ -1629,12 +1632,13 @@ local For_Expr = Expr:clone {
             exps[i] = el[i]:generate(bsc, {})
         end
         bsc:push(gen_local(gen_seq({ fsym, ssym, varsym }), gen_seq(exps)))
-        bsc:push(gen_label(lbeg))
+        bsc:push(gen_label(linc))
 
         local ids = self.idents
         bsc:push(gen_local(gen_seq(ids), gen_call(fsym,
             gen_seq({ ssym, varsym }))))
 
+        bsc:push(gen_label(lbeg))
         local tsc = new_scope(bsc)
         tsc:push(gen_goto(lend))
         bsc:push(gen_if(gen_binexpr("==", ids[1], "nil"), tsc))
@@ -1678,9 +1682,10 @@ local For_Range_Expr = Expr:clone {
             = unique_sym("var"), unique_sym("lim"), unique_sym("step")
 
         local lbl = unique_sym("lbl")
-        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
+        local lbeg, linc, lend = lbl .. "_beg", lbl .. "_inc", lbl .. "_end"
         bsc.data = {
             loop_start = lbeg,
+            loop_inc   = linc,
             loop_end   = lend
         }
 
@@ -1723,6 +1728,7 @@ local For_Range_Expr = Expr:clone {
             statement = true,
             no_scope  = true
         })
+        bsc:push(gen_label(linc))
         bsc:push(gen_ass(varsym, gen_binexpr("+", varsym, stepsym)))
         bsc:push(gen_goto(lbeg))
         bsc:push(gen_label(lend))
@@ -1750,6 +1756,14 @@ local Break_Expr = Expr:clone {
 
 local Cycle_Expr = Expr:clone {
     name = "Cycle_Expr",
+
+    generate = function(self, sc, kwargs)
+        sc:push(gen_goto(sc.data.loop_inc))
+    end
+}
+
+local Redo_Expr = Expr:clone {
+    name = "Redo_Expr",
 
     generate = function(self, sc, kwargs)
         sc:push(gen_goto(sc.data.loop_start))
@@ -3048,6 +3062,11 @@ local parse_simpleexpr = function(ls)
         push_curline(ls)
         ls:get()
         return Cycle_Expr(ls)
+    elseif name == "redo" then
+        assert_check(ls, ls.lpstack:top(), "no loop to redo")
+        push_curline(ls)
+        ls:get()
+        return Redo_Expr(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "yield" then

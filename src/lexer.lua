@@ -48,6 +48,7 @@ local keywords = {
     ["or"    ] = true,
     ["quote" ] = true,
     ["rec"   ] = true,
+    ["redo"  ] = true,
     ["return"] = true,
     ["seq"   ] = true,
     ["true"  ] = true,
