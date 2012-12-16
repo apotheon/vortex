@@ -2852,7 +2852,7 @@ local parse_object = function(ls)
 
     -- implicit constructors
     local cargs
-    if tok.name == "(" then
+    if tok.name == "[" then
         ls:get()
 
         cargs = {}
@@ -2863,7 +2863,7 @@ local parse_object = function(ls)
             cargs[#cargs + 1] = { v, parse_when(ls) }
          until tok.name ~= "," or ls:get() ~= "<ident>"
 
-        assert_tok(ls, ")")
+        assert_tok(ls, "]")
         ls:get()
 
         if tok.name ~= "{" then
