@@ -2860,7 +2860,7 @@ local parse_object = function(ls)
         el = parse_exprlist(ls, true)
         assert_tok(ls, ")")
         ls:get()
-    elseif tok.name ~= "{" then
+    elseif tok.name ~= "{" and tok.name ~= "[" then
         el = { parse_primaryexpr(ls) }
     end
 
