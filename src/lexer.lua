@@ -127,6 +127,7 @@ end
 local read_long_comment
 
 read_long_comment = function(ls)
+    local finished = false
     while ls.current do
         -- nesting? get rid of the nested comment recursively.
         if ls.current == "/" then
@@ -147,6 +148,7 @@ read_long_comment = function(ls)
             next_char(ls)
             if ls.current == "/" then
                 next_char(ls)
+                finished = true
                 break
             end
         end
@@ -154,7 +156,7 @@ read_long_comment = function(ls)
         next_char(ls)
     end
     -- here we should have the token right after the comment ready
-    if not ls.current then
+    if not finished then
         lex_error(ls, "unfinished long comment", "<eos>")
     end
 end
