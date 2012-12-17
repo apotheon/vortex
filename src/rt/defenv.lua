@@ -63,6 +63,11 @@ env.zip = function(a, b)
     end
     return r
 end
+env.isstr  = function(s) return type(s) == "string" end
+env.isnum  = function(n) return type(n) == "number" end
+env.isfun  = function(f) return type(f) == "function" end
+env.isbool = function(b) return type(b) == "boolean" end
+env.isnil  = function(n) return n == nil end
 
 -- the parser
 local parser = M.__vx_parser

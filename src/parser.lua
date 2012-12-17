@@ -2305,13 +2305,13 @@ local parse_function = function(ls, obj)
         end
         fnexpr = Function_Expr(ls, ids, defs,
             Match_Expr(ls, el, parse_match_body(ls)))
-    elseif n == "(" then
-        ls:get()
-        local el = parse_exprlist(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        push_curline(ls)
-        fnexpr = Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
+    --elseif n == "(" then
+    --    ls:get()
+    --    local el = parse_exprlist(ls)
+    --    assert_tok(ls, ")")
+    --    ls:get()
+    --    push_curline(ls)
+    --    fnexpr = Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
     else
         fnexpr = Function_Expr(ls, ids, defs, parse_expr(ls))
     end
