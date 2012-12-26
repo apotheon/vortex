@@ -1,6 +1,8 @@
 local lexer   = require("lexer")
 local util    = require("util")
 
+local M = {}
+
 -- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
     -- assignment ops are left out, they're right associative and have the
@@ -107,6 +109,7 @@ local Scope = util.Object:clone {
         return (" "):rep(ind) .. concat(self.body, "\n" .. (" "):rep(ind))
     end
 }
+M.Scope = Scope
 
 -- new function scope eliminates extra data
 local new_fn_scope = function(sc, noinc)
@@ -117,6 +120,7 @@ local new_fn_scope = function(sc, noinc)
     ret.data = {}
     return ret
 end
+M.new_fn_scope = new_fn_scope
 
 local new_scope = function(sc, fs, noinc)
     local ret = sc:clone()
@@ -125,6 +129,7 @@ local new_scope = function(sc, fs, noinc)
     ret.body, ret.locked = {}, false
     return ret
 end
+M.new_scope = new_scope
 
 local gen_str = function(str)
     local used = {}
@@ -281,12 +286,6 @@ local gen_string = function(str)
     return '"' .. str .. '"'
 end
 
-local TAG_NUMBER  = 1
-local TAG_STRING  = 2
-local TAG_BOOLEAN = 3
-local TAG_NIL     = 4
-local TAG_INVALID = 5
-
 -- classes
 
 local mskip = {
@@ -338,9 +337,12 @@ local Expr = util.Object:clone {
                 end)
             end
         end end
-        return self.name .. "(" .. concat(params, ",") .. ")"
+        local slf = get_rt_fun("parser")
+        return gen_index(slf, gen_string(self.name)) .. "("
+            .. concat(params, ",") .. ")"
     end
 }
+M.Expr = Expr
 
 local Call_Expr
 local Value_Expr
@@ -363,6 +365,7 @@ local Symbol_Expr = Expr:clone {
         return true
     end
 }
+M.Symbol_Expr = Symbol_Expr
 
 local Index_Expr = Expr:clone {
     name = "Index_Expr",
@@ -394,20 +397,7 @@ local Index_Expr = Expr:clone {
         return true
     end
 }
-
-local to_tag = function(tn)
-    if tn == "<string>" then
-        return TAG_STRING
-    elseif tn == "<number>" then
-        return TAG_NUMBER
-    elseif tn == "true" or tn == "false" then
-        return TAG_BOOLEAN
-    elseif tn == "nil" then
-        return TAG_NIL
-    else
-        return TAG_INVALID
-    end
-end
+M.Index_Expr = Index_Expr
 
 Value_Expr = Expr:clone {
     name = "Value_Expr",
@@ -426,6 +416,7 @@ Value_Expr = Expr:clone {
         return tostring(v)
     end
 }
+M.Value_Expr = Value_Expr
 
 local Vararg_Expr = Expr:clone {
     name = "Vararg_Expr",
@@ -436,6 +427,7 @@ local Vararg_Expr = Expr:clone {
         return sl .. "(" .. (sc.fstate.ndefargs + 1) .. ", ...)"
     end
 }
+M.Vararg_Expr = Vararg_Expr
 
 local Return_Expr = Expr:clone {
     name = "Return_Expr",
@@ -464,6 +456,7 @@ local Return_Expr = Expr:clone {
         sc:lock()
     end
 }
+M.Return_Expr = Return_Expr
 
 local Yield_Expr = Expr:clone {
     name = "Yield_Expr",
@@ -500,6 +493,7 @@ local Yield_Expr = Expr:clone {
         return true
     end
 }
+M.Yield_Expr = Yield_Expr
 
 local Block_Expr = Expr:clone {
     name = "Block_Expr",
@@ -572,6 +566,7 @@ local Block_Expr = Expr:clone {
         return vexpr and vexpr:is_multret()
     end
 }
+M.Block_Expr = Block_Expr
 
 local Table_Expr = Expr:clone {
     name = "Table_Expr",
@@ -628,6 +623,7 @@ local Table_Expr = Expr:clone {
         return gen_table(sc, kvs)
     end
 }
+M.Table_Expr = Table_Expr
 
 local List_Expr = Expr:clone {
     name = "List_Expr",
@@ -656,6 +652,7 @@ local List_Expr = Expr:clone {
         return gen_list(sc, syms)
     end
 }
+M.List_Expr = List_Expr
 
 local Object_Expr = Expr:clone {
     name = "Object_Expr",
@@ -728,6 +725,7 @@ local Object_Expr = Expr:clone {
         return gen_call(fun, gen_seq({ gen_table(sc, kvs), gen_seq(syms) }))
     end
 }
+M.Object_Expr = Object_Expr
 
 local New_Expr = Expr:clone {
     name = "New_Expr",
@@ -759,6 +757,7 @@ local New_Expr = Expr:clone {
         return gen_call(fun, gen_seq(t))
     end
 }
+M.New_Expr = New_Expr
 
 local Pack_Expr
 
@@ -822,6 +821,7 @@ local Binary_Expr = Expr:clone {
         return (Ass_Ops[self.op] and self.lhs:is_multret())
     end
 }
+M.Binary_Expr = Binary_Expr
 
 local Unary_Expr = Expr:clone {
     name = "Unary_Expr",
@@ -836,6 +836,7 @@ local Unary_Expr = Expr:clone {
         return gen_unexpr(self.op, rhs)
     end
 }
+M.Unary_Expr = Unary_Expr
 
 local Function_Expr = Expr:clone {
     name = "Function_Expr",
@@ -918,6 +919,7 @@ local Function_Expr = Expr:clone {
         return true
     end
 }
+M.Function_Expr = Function_Expr
 
 local If_Expr = Expr:clone {
     name = "If_Expr",
@@ -990,6 +992,7 @@ local If_Expr = Expr:clone {
         return self.tval:is_multret() or (fv and fv:is_multret())
     end
 }
+M.If_Expr = If_Expr
 
 local And_Pattern = Expr:clone {
     name = "And_Pattern",
@@ -1004,6 +1007,7 @@ local And_Pattern = Expr:clone {
                                   self.rhs:generate(sc, kwargs))
     end
 }
+M.And_Pattern = And_Pattern
 
 local Or_Pattern = Expr:clone {
     name = "Or_Pattern",
@@ -1018,6 +1022,7 @@ local Or_Pattern = Expr:clone {
                                  self.rhs:generate(sc, kwargs))
     end
 }
+M.Or_Pattern = Or_Pattern
 
 local Expr_Pattern = Expr:clone {
     name = "Expr_Pattern",
@@ -1031,6 +1036,7 @@ local Expr_Pattern = Expr:clone {
         return gen_binexpr("==", self.expr:generate(sc, {}), kwargs.expr)
     end
 }
+M.Expr_Pattern = Expr_Pattern
 
 local Variable_Pattern = Expr:clone {
     name = "Variable_Pattern",
@@ -1052,6 +1058,7 @@ local Variable_Pattern = Expr:clone {
         if kwargs.let then return self.var end
     end
 }
+M.Variable_Pattern = Variable_Pattern
 
 local Wildcard_Pattern = Expr:clone {
     name = "Wildcard_Pattern",
@@ -1064,6 +1071,7 @@ local Wildcard_Pattern = Expr:clone {
     generate = function(self, sc, kwargs)
     end
 }
+M.Wildcard_Pattern = Wildcard_Pattern
 
 local Table_Pattern = Expr:clone {
     name = "Table_Pattern",
@@ -1125,6 +1133,7 @@ local Table_Pattern = Expr:clone {
         return ret
     end
 }
+M.Table_Pattern = Table_Pattern
 
 local Object_Pattern = Expr:clone {
     name = "Object_Pattern",
@@ -1172,6 +1181,7 @@ local Object_Pattern = Expr:clone {
         sc:merge(ns)
     end
 }
+M.Object_Pattern = Object_Pattern
 
 local Cons_Pattern = Expr:clone {
     name = "Cons_Pattern",
@@ -1207,6 +1217,7 @@ local Cons_Pattern = Expr:clone {
         tail:generate(sc, { expr = gen_call(rest,  expr) })
     end
 }
+M.Cons_Pattern = Cons_Pattern
 
 local Match_Expr = Expr:clone {
     name = "Match_Expr",
@@ -1338,6 +1349,7 @@ local Match_Expr = Expr:clone {
         return false
     end
 }
+M.Match_Expr = Match_Expr
 
 local Let_Expr = Expr:clone {
     name = "Let_Expr",
@@ -1403,6 +1415,7 @@ local Let_Expr = Expr:clone {
         end
     end
 }
+M.Let_Expr = Let_Expr
 
 local While_Expr = Expr:clone {
     name = "While_Expr",
@@ -1442,6 +1455,7 @@ local While_Expr = Expr:clone {
         return true
     end
 }
+M.While_Expr = While_Expr
 
 local Do_While_Expr = Expr:clone {
     name = "Do_While_Expr",
@@ -1479,6 +1493,7 @@ local Do_While_Expr = Expr:clone {
         return true
     end
 }
+M.Do_While_Expr = Do_While_Expr
 
 local For_Expr = Expr:clone {
     name = "For_Expr",
@@ -1534,6 +1549,7 @@ local For_Expr = Expr:clone {
         return true
     end
 }
+M.For_Expr = For_Expr
 
 local For_Range_Expr = Expr:clone {
     name = "For_Range_Expr",
@@ -1612,6 +1628,7 @@ local For_Range_Expr = Expr:clone {
         return true
     end
 }
+M.For_Range_Expr = For_Range_Expr
 
 local Break_Expr = Expr:clone {
     name = "Break_Expr",
@@ -1620,6 +1637,7 @@ local Break_Expr = Expr:clone {
         sc:push(gen_goto(sc.data.loop_end))
     end
 }
+M.Break_Expr = Break_Expr
 
 local Cycle_Expr = Expr:clone {
     name = "Cycle_Expr",
@@ -1628,6 +1646,7 @@ local Cycle_Expr = Expr:clone {
         sc:push(gen_goto(sc.data.loop_inc))
     end
 }
+M.Cycle_Expr = Cycle_Expr
 
 local Redo_Expr = Expr:clone {
     name = "Redo_Expr",
@@ -1636,6 +1655,7 @@ local Redo_Expr = Expr:clone {
         sc:push(gen_goto(sc.data.loop_start))
     end
 }
+M.Redo_Expr = Redo_Expr
 
 local Seq_Expr = Expr:clone {
     name = "Seq_Expr",
@@ -1670,6 +1690,7 @@ local Seq_Expr = Expr:clone {
         return true
     end
 }
+M.Seq_Expr = Seq_Expr
 
 Pack_Expr = Expr:clone {
     name = "Pack_Expr",
@@ -1701,6 +1722,7 @@ Pack_Expr = Expr:clone {
         return true
     end
 }
+M.Pack_Expr = Pack_Expr
 
 local Quote_Expr = Expr:clone {
     name = "Quote_Expr",
@@ -1714,6 +1736,7 @@ local Quote_Expr = Expr:clone {
         return self.expr:to_lua(sc, kwargs)
     end
 }
+M.Quote_Expr = Quote_Expr
 
 local Unquote_Expr = Expr:clone {
     name = "Unquote_Expr",
@@ -1728,10 +1751,13 @@ local Unquote_Expr = Expr:clone {
     end,
 
     to_lua = function(self, sc, kwargs)
-        return "Value_Expr(" .. serialize(self.dinfo) .. ", "
+        local slf = get_rt_fun("parser")
+        return gen_index(slf, gen_string("Value_Expr")) .. "("
+            .. serialize(self.dinfo) .. ", "
             .. self.expr:generate(sc, kwargs) .. ")"
     end
 }
+M.Unquote_Expr = Unquote_Expr
 
 local Enum_Expr = Expr:clone {
     name = "Enum_Expr",
@@ -1774,6 +1800,7 @@ local Enum_Expr = Expr:clone {
         return sym
     end
 }
+M.Enum_Expr = Enum_Expr
 
 Call_Expr = Expr:clone {
     name = "Call_Expr",
@@ -1817,6 +1844,7 @@ Call_Expr = Expr:clone {
         return true
     end
 }
+M.Call_Expr = Call_Expr
 
 local parse_expr
 local parse_exprlist
@@ -3152,6 +3180,7 @@ local parse = function(fname, reader)
 
     return ast
 end
+M.parse = parse
 
 local build = function(ast, noenv)
     util.randomseed(os.clock() * os.time())
@@ -3186,13 +3215,11 @@ local build = function(ast, noenv)
 
     return concat(hdr, "\n") .. "\n" .. ms:build()
 end
+M.build = build
 
 local loadstr = loadstring
+M.load = function(str, env)
+    return loadstr(build(parse(str), env))
+end
 
-return {
-    parse = parse,
-    build = build,
-    load  = function(str, env)
-        return loadstr(build(parse(str), env))
-    end
-}
+return M
