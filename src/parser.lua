@@ -56,6 +56,7 @@ local get_syms = util.get_syms
 local hash_sym = util.hash_sym
 local map = util.map
 local Stack = util.Stack
+local serialize = util.serialize
 
 local get_rt_fun
 
@@ -125,8 +126,19 @@ local new_scope = function(sc, fs, noinc)
     return ret
 end
 
-local gen_str = function(str, level)
-    local ind = ("="):rep(level or 0)
+local gen_str = function(str)
+    local used = {}
+    for x in str:gmatch("%[(=*)%[") do
+        used[#x] = true
+    end
+    for x in str:gmatch("%](=*)%]") do
+        used[#x] = true
+    end
+    local lvl = 0
+    while true do
+        if used[lvl] then lvl = lvl + 1 else break end
+    end
+    local ind = ("="):rep(lvl or 0)
     return concat { "([", ind, "[", str, "]", ind, "])" }
 end
 
@@ -277,14 +289,23 @@ local TAG_INVALID = 5
 
 -- classes
 
+local mskip = {
+    ["__call"] = true, ["__index"] = true, ["__proto"   ] = true,
+    ["dinfo" ] = true, ["name"   ] = true, ["__tostring"] = true
+}
+
 local Expr = util.Object:clone {
     name = "Expr",
 
     __init = function(self, ps)
         if not ps then return nil end
-        local dinfo = ps.ndstack:pop()
-        dinfo.last_line, dinfo.source = ps.line_number, ps.source
-        self.dinfo = dinfo
+        if not ps.ndstack then
+            self.dinfo = ps
+        else
+            local dinfo = ps.ndstack:pop()
+            dinfo.last_line, dinfo.source = ps.line_number, ps.source
+            self.dinfo = dinfo
+        end
     end,
 
     is_lvalue = function(self)
@@ -302,8 +323,22 @@ local Expr = util.Object:clone {
     generate = function(self, sc, kwargs)
     end,
 
-    to_lua = function(self, i)
-        return "Expr()"
+    to_lua = function(self, sc, kwargs)
+        local params = { serialize(self.dinfo) }
+        for k, v in pairs(self) do if not mskip[k] then
+            if type(v) == "table" and v.to_lua then
+                params[#params + 1] = v:to_lua(sc, kwargs)
+            else
+                params[#params + 1] = serialize(v, nil, nil, function(v)
+                    if type(v) == "table" and v.to_lua then
+                        return v:to_lua(sc, kwargs), true
+                    else
+                        return v
+                    end
+                end)
+            end
+        end end
+        return self.name .. "(" .. concat(params, ",") .. ")"
     end
 }
 
@@ -326,10 +361,6 @@ local Symbol_Expr = Expr:clone {
 
     is_lvalue = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("Symbol_Expr(%q)"):format(self.symbol)
     end
 }
 
@@ -361,11 +392,6 @@ local Index_Expr = Expr:clone {
 
     is_lvalue = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("Index_Expr(%q, %s)"):format(self.symbol,
-            self.expr:to_lua(i + 1))
     end
 }
 
@@ -386,26 +412,18 @@ end
 Value_Expr = Expr:clone {
     name = "Value_Expr",
 
-    __init = function(self, ps, tag, val, level)
+    __init = function(self, ps, val)
         Expr.__init(self, ps)
-        self.tag, self.value, self.level = tag, val, level
+        self.value = val
     end,
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local tag, v = self.tag, self.value
-        if tag == TAG_STRING then
-            return gen_str(v, self.level)
+        local v = self.value
+        if type(v) == "string" then
+            return gen_str(v)
         end
-        return self.value
-    end,
-
-    is_tag = function(self, tag)
-        return self.tag == tag
-    end,
-
-    to_lua = function(self, i)
-        return ("Value_Expr(%s)"):format(self.value)
+        return tostring(v)
     end
 }
 
@@ -416,10 +434,6 @@ local Vararg_Expr = Expr:clone {
         if kwargs.statement then return nil end
         local sl = get_rt_fun("select")
         return sl .. "(" .. (sc.fstate.ndefargs + 1) .. ", ...)"
-    end,
-
-    to_lua = function(self, i)
-        return "Vararg_Expr()"
     end
 }
 
@@ -448,20 +462,6 @@ local Return_Expr = Expr:clone {
         end
         sc:push(gen_ret(gen_seq(exps)))
         sc:lock()
-    end,
-
-    to_lua = function(self, i)
-        local exprs
-        if #self.exprs == 0 then
-            exprs = "{}"
-        else
-            local exprt = map(self.exprs, function(expr)
-                return expr:to_lua(i + 1) end)
-            exprs = "{\n" .. gen_indent(i + 1)
-                .. concat(exprt, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Return_Expr(%s)"):format(exprs)
     end
 }
 
@@ -498,20 +498,6 @@ local Yield_Expr = Expr:clone {
 
     is_multret = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        local exprs
-        if #self.exprs == 0 then
-            exprs = "{}"
-        else
-            local exprt = map(self.exprs, function(expr)
-                return expr:to_lua(i + 1) end)
-            exprs = "{\n" .. gen_indent(i + 1)
-                .. concat(exprt, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Yield_Expr(%s)"):format(exprs)
     end
 }
 
@@ -584,20 +570,6 @@ local Block_Expr = Expr:clone {
     is_multret = function(self)
         local vexpr = self.vexpr
         return vexpr and vexpr:is_multret()
-    end,
-
-    to_lua = function(self, i)
-        local exprs
-        if #self.exprs == 0 then
-            exprs = "{}"
-        else
-            local exprt = map(self.exprs, function(expr)
-                return expr:to_lua(i + 1) end)
-            exprs = "{\n" .. gen_indent(i + 1)
-                .. concat(exprt, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Block_Expr(%s)"):format(exprs)
     end
 }
 
@@ -654,29 +626,6 @@ local Table_Expr = Expr:clone {
         sc.indent = sc.indent - 1
 
         return gen_table(sc, kvs)
-    end,
-
-    to_lua = function(self, i)
-        local array, assarr
-        if #self.array == 0 then
-            array = "{}"
-        else
-            local exprs = map(self.array, function(expr)
-                return expr:to_lua(i + 1) end)
-            array = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        if #self.map == 0 then
-            assarr = "{}"
-        else
-            local exprs = map(self.map, function(expr)
-                return expr:to_lua(i + 1) end)
-            assign = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Table_Expr(%s, %s)"):format(array, assarr)
     end
 }
 
@@ -705,9 +654,6 @@ local List_Expr = Expr:clone {
         end
 
         return gen_list(sc, syms)
-    end,
-
-    to_lua = function(self, i)
     end
 }
 
@@ -874,11 +820,6 @@ local Binary_Expr = Expr:clone {
 
     is_multret = function(self)
         return (Ass_Ops[self.op] and self.lhs:is_multret())
-    end,
-
-    to_lua = function(self, i)
-        return ("Binary_Expr(%q, %s, %s)"):format(self.op,
-            self.lhs:to_lua(i + 1), self.rhs:to_lua(i + 1))
     end
 }
 
@@ -893,11 +834,6 @@ local Unary_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local rhs = self.rhs:generate(sc, {})
         return gen_unexpr(self.op, rhs)
-    end,
-
-    to_lua = function(self, i)
-        return ("Unary_Expr(%q, %s)"):format(self.op,
-            self.rhs:to_lua(i + 1))
     end
 }
 
@@ -980,25 +916,6 @@ local Function_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        local params = #self.params == 0 and "{}"
-            or "{ " .. concat(map(self.params,
-                function(n) return '"' .. n .. '"' end), ", ") .. " }"
-
-        local defaults
-        if #self.defaults == 0 then
-            defaults = "{}"
-        else
-            local exprs = map(self.defaults, function(expr)
-                return expr:to_lua(i + 1) end)
-            defaults = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Function_Expr(%s, %s, %s)"):format(params, defaults,
-            self.body:to_lua(i + 1))
     end
 }
 
@@ -1071,12 +988,6 @@ local If_Expr = Expr:clone {
     is_multret = function(self)
         local fv = self.fval
         return self.tval:is_multret() or (fv and fv:is_multret())
-    end,
-
-    to_lua = function(self, i)
-        return ("If_Expr(%s, %s, %s)"):format(
-            self.cond:to_lua(i + 1), self.tval:to_lua(i + 1),
-            self.fval:to_lua(i + 1))
     end
 }
 
@@ -1425,12 +1336,6 @@ local Match_Expr = Expr:clone {
             if body[i][2]:is_multret() then return true end
         end
         return false
-    end,
-
-    to_lua = function(self, i)
-        return ("If_Expr(%s, %s, %s)"):format(
-            self.cond:to_lua(i + 1), self.tval:to_lua(i + 1),
-            self.fval:to_lua(i + 1))
     end
 }
 
@@ -1496,24 +1401,6 @@ local Let_Expr = Expr:clone {
         if not kwargs.statement then
             return gen_seq(rids)
         end
-    end,
-
-    to_lua = function(self, i)
-        local idents = #self.idents == 0 and "{}"
-            or "{ " .. concat(map(self.idents,
-                function(n) return '"' .. n .. '"' end), ", ") .. " }"
-
-        local assign
-        if #self.assign == 0 then
-            assign = "{}"
-        else
-            local exprs = map(self.assign, function(expr)
-                return expr:to_lua(i + 1) end)
-            assign = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Let_Expr(%q, %s, %s)"):format(self.type, idents, assign)
     end
 }
 
@@ -1553,11 +1440,6 @@ local While_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("While_Expr(%s, %s)"):format(
-            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
     end
 }
 
@@ -1595,11 +1477,6 @@ local Do_While_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("While_Expr(%s, %s)"):format(
-            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
     end
 }
 
@@ -1655,11 +1532,6 @@ local For_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("While_Expr(%s, %s)"):format(
-            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
     end
 }
 
@@ -1738,11 +1610,6 @@ local For_Range_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("While_Expr(%s, %s)"):format(
-            self.cond:to_lua(i + 1), self.body:to_lua(i + 1))
     end
 }
 
@@ -1801,10 +1668,6 @@ local Seq_Expr = Expr:clone {
 
     is_multret = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        return ("Seq_Expr(%s)"):format(self.expr:to_lua(i + 1))
     end
 }
 
@@ -1848,11 +1711,25 @@ local Quote_Expr = Expr:clone {
     end,
 
     generate = function(self, sc, kwargs)
-        return self.expr:to_lua(sc.indent)
+        return self.expr:to_lua(sc, kwargs)
+    end
+}
+
+local Unquote_Expr = Expr:clone {
+    name = "Unquote_Expr",
+
+    __init = function(self, ps, expr)
+        Expr.__init(self, ps)
+        self.expr = expr
     end,
 
-    to_lua = function(self, i)
-        return ("Quote_Expr(%s)"):format(self.expr:to_lua(i + 1))
+    generate = function(self, sc, kwargs)
+        return self.expr:generate(sc, kwargs)
+    end,
+
+    to_lua = function(self, sc, kwargs)
+        return "Value_Expr(" .. serialize(self.dinfo) .. ", "
+            .. self.expr:generate(sc, kwargs) .. ")"
     end
 }
 
@@ -1938,20 +1815,6 @@ Call_Expr = Expr:clone {
 
     is_multret = function(self)
         return true
-    end,
-
-    to_lua = function(self, i)
-        local params
-        if #self.params == 0 then
-            params = "{}"
-        else
-            local exprs = map(self.params, function(expr)
-                return expr:to_lua(i + 1) end)
-            params = "{\n" .. gen_indent(i + 1)
-                .. concat(exprs, ",\n" .. gen_indent(i + 1))
-                .. "\n" .. gen_indent(i) .. "}"
-        end
-        return ("Call_Expr(%s, %s)"):format(self.expr:to_lua(i + 1), params)
     end
 }
 
@@ -2080,7 +1943,7 @@ local parse_table = function(ls)
     local idx = 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == "=" then
-            local name = Value_Expr(nil, TAG_STRING, tok.value)
+            local name = Value_Expr(nil, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
         elseif tok.name == "$" or tok.name == "$(" then
@@ -2278,10 +2141,10 @@ local parse_function = function(ls, obj)
         local fnexpr = Function_Expr(ls, ids, defs, body)
         if name then
             if obj then
-                return Value_Expr(ls, TAG_STRING, name), fnexpr
+                return Value_Expr(ls, name), fnexpr
             elseif tbl then
                 return Binary_Expr(ls, "=", Index_Expr(ls,
-                    Symbol_Expr(ls, tbl), Value_Expr(ls, TAG_STRING, name)),
+                    Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                         fnexpr)
             else
                 return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
@@ -2318,10 +2181,10 @@ local parse_function = function(ls, obj)
 
     if name then
         if obj then
-            return Value_Expr(ls, TAG_STRING, name), fnexpr
+            return Value_Expr(ls, name), fnexpr
         elseif tbl then
             return Binary_Expr(ls, "=", Index_Expr(ls,
-                Symbol_Expr(ls, tbl), Value_Expr(ls, TAG_STRING, name)),
+                Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                     fnexpr)
         else
             return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
@@ -2418,6 +2281,30 @@ local parse_quote = function(ls)
     end
 
     return Quote_Expr(ls, parse_expr(ls))
+end
+
+local parse_unquote = function(ls)
+    push_curline(ls)
+    ls:get()
+
+    local tok = ls.token
+    if tok.name == "{" then
+        return Unquote_Expr(ls, parse_block(ls))
+    end
+
+    assert_tok(ls, "->")
+    ls:get()
+
+    if tok.name == "(" then
+        ls:get()
+        local el = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        push_curline(ls)
+        return Unquote_Expr(ls, Pack_Expr(ls, el))
+    end
+
+    return Unquote_Expr(ls, parse_expr(ls))
 end
 
 local parse_enum = function(ls)
@@ -2531,7 +2418,7 @@ local parse_compound_pattern = function(ls, let)
     local tok, tbl, idx = ls.token, {}, 1
     repeat
         if tok.name == "<ident>" and ls:lookahead() == ":" then
-            local name = Value_Expr(nil, TAG_STRING, tok.value)
+            local name = Value_Expr(nil, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_pattern(ls, let) }
         elseif tok.name == "$" or tok.name == "$(" then
@@ -2577,12 +2464,12 @@ local parse_object_pattern = function(ls)
                 ex = parse_expr(ls)
             else
                 assert_tok(ls, "<ident>")
-                ex = Value_Expr(nil, TAG_STRING, tok.value)
+                ex = Value_Expr(nil, tok.value)
                 ls:get()
             end
         end
         tbl[#tbl + 1] = { Symbol_Expr(nil, name),
-            ex or Value_Expr(nil, TAG_STRING, name) }
+            ex or Value_Expr(nil, name) }
     until tok.name ~= "," or not ls:get()
     return tbl
 end
@@ -2608,7 +2495,16 @@ parse_pattern = function(ls, let)
             push_curline(ls)
             local v = tok.value or tn
             ls:get()
-            exp = Value_Expr(ls, to_tag(tn), v)
+            if tn == "<number>" then
+                v = tonumber(v)
+            elseif tn == "true" then
+                v = true
+            elseif tn == "false" then
+                v = false
+            elseif tn == "nil" then
+                v = nil
+            end
+            exp = Value_Expr(ls, v)
         end
         return Expr_Pattern(ls, exp, parse_as(ls), parse_when(ls))
     elseif tn == "<ident>" then
@@ -2796,7 +2692,7 @@ local parse_for = function(ls)
             ls:get()
             step = parse_expr(ls)
         else
-            step = Value_Expr(nil, TAG_NUMBER, 1)
+            step = Value_Expr(nil, 1)
         end
     else
         ids = parse_identlist(ls)
@@ -2899,7 +2795,7 @@ local parse_object = function(ls)
         if tok.name == "fn" then
             tbl[#tbl + 1] = { parse_function(ls, true) }
         elseif tok.name == "<ident>" then
-            local kexpr = Value_Expr(nil, TAG_STRING, tok.value)
+            local kexpr = Value_Expr(nil, tok.value)
             ls:get()
             assert_tok(ls, "=")
             ls:get()
@@ -2965,7 +2861,7 @@ parse_primaryexpr = function(ls)
         local v = tok.value
         ls:get()
         return Index_Expr(ls, Symbol_Expr(ls, "self"),
-            Value_Expr(ls, TAG_STRING, v))
+            Value_Expr(ls, v))
     else
         syntax_error(ls, "unexpected symbol")
     end
@@ -2998,9 +2894,9 @@ local parse_suffixedexpr = function(ls)
                     ls:get()
                 end
                 exp = Call_Expr(ls, Index_Expr(ls, exp,
-                    Value_Expr(ls, TAG_STRING, s)), el, true)
+                    Value_Expr(ls, s)), el, true)
             else
-                exp = Index_Expr(ls, exp, Value_Expr(ls, TAG_STRING, s))
+                exp = Index_Expr(ls, exp, Value_Expr(ls, s))
             end
         elseif tok.name == "[" then
             push_curline(ls)
@@ -3040,6 +2936,8 @@ local parse_simpleexpr = function(ls)
         return parse_sequence(ls)
     elseif name == "quote" then
         return parse_quote(ls)
+    elseif name == "unquote" then
+        return parse_unquote(ls)
     elseif name == "enum" then
         return parse_enum(ls)
     elseif name == "if" then
@@ -3086,11 +2984,11 @@ local parse_simpleexpr = function(ls)
     elseif name == "__FILE__" then
         push_curline(ls)
         ls:get()
-        return Value_Expr(ls, TAG_STRING, ls.source)
+        return Value_Expr(ls, ls.source)
     elseif name == "__LINE__" then
         push_curline(ls)
         ls:get()
-        return Value_Expr(ls, TAG_NUMBER, ls.line_number)
+        return Value_Expr(ls, ls.line_number)
     elseif name == "..." then
         assert_check(ls, ls.fnstack:top().vararg,
             "cannot use '...' outside a vararg function")
@@ -3105,24 +3003,19 @@ local parse_simpleexpr = function(ls)
         push_curline(ls)
         local v = tok.value
         ls:get()
-        return Value_Expr(ls, TAG_NUMBER, v)
-    elseif name == "<string>" then
+        return Value_Expr(ls, tonumber(v))
+    elseif name == "<begstring>" then
         push_curline(ls)
         ls:get() -- consume the "start" token
 
-        local levels, exprs, value = {}, { true }
+        local exprs, value = { true }
         while true do
             -- potential string end? but we have to assume implicit
             -- constant concatenation
             local tn, tv = tok.name, tok.value
-            if tn == "<string>" and type(tv) == "table" then
-                -- append levels
-                for k, v in pairs(tv) do
-                    levels[k] = true
-                end
+            if tn == "<endstring>" then
                 ls:get()
-                -- end of the string
-                if tok.name ~= "<string>" then
+                if tok.name ~= "<begstring>" then
                     break
                 end
                 -- consume next "start" token
@@ -3136,20 +3029,22 @@ local parse_simpleexpr = function(ls)
             end
         end
 
-        local level = 0
-        while levels[level] do
-            level = level + 1
-        end
         if #exprs > 1 then
             push_curline(ls)
-            exprs[1] = Value_Expr(ls, TAG_STRING, value, level)
+            exprs[1] = Value_Expr(ls, value)
             return Call_Expr(ls, Symbol_Expr(nil, "str_fmt", true), exprs)
         end
-        return Value_Expr(ls, TAG_STRING, value, level)
+        return Value_Expr(ls, value)
     elseif name == "nil" or name == "true" or name == "false" then
         push_curline(ls)
         ls:get()
-        return Value_Expr(ls, to_tag(name), name)
+        local v
+        if name == "true" then
+            v = true
+        elseif name == "false" then
+            v = false
+        end
+        return Value_Expr(ls, v)
     else
         return parse_suffixedexpr(ls)
     end

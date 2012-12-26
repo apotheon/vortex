@@ -135,7 +135,7 @@ end
 
 -- a neat table serializer
 local serialize
-serialize = function(tbl, pretty, indent)
+serialize = function(tbl, pretty, indent, simp)
     pretty = pretty or false
     indent = indent or 4
 
@@ -156,6 +156,10 @@ serialize = function(tbl, pretty, indent)
             end
 
             if not skip then
+                local noq
+                if simp then
+                    v, noq = simp(v)
+                end
                 local elem
 
                 local t = type(v)
@@ -190,7 +194,7 @@ serialize = function(tbl, pretty, indent)
                         elem[#elem] =
                             enc(v, tables, assoc and ind + indent or ind)
                     end
-                elseif t == "number" then
+                elseif v == nil or t == "number" or t == "boolean" or noq then
                     elem[#elem] = tostring(v)
                 else
                     elem[#elem] = "\"" .. tostring(v) .. "\""
@@ -220,10 +224,12 @@ serialize = function(tbl, pretty, indent)
         return "{" .. table.concat(ret, ",") .. "}"
     end
 
+    if not tbl then return "nil" end
+
     local t = type(tbl)
 
     if t ~= "table" then
-        if t == "number" then
+        if t == "number" or t == "boolean" then
             return tostring(tbl)
         else
             return "\"" .. tostring(tbl) .. "\""

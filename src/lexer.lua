@@ -21,40 +21,41 @@ local Stack        = util.Stack
 
 -- all of the core vortex keywords
 local keywords = {
-    ["and"   ] = true,
-    ["as"    ] = true,
-    ["break" ] = true,
-    ["case"  ] = true,
-    ["cfn"   ] = true,
-    ["clone" ] = true,
-    ["coro"  ] = true,
-    ["cycle" ] = true,
-    ["do"    ] = true,
-    ["else"  ] = true,
-    ["enum"  ] = true,
-    ["false" ] = true,
-    ["fn"    ] = true,
-    ["for"   ] = true,
-    ["glob"  ] = true,
-    ["goto"  ] = true,
-    ["if"    ] = true,
-    ["in"    ] = true,
-    ["let"   ] = true,
-    ["match" ] = true,
-    ["mod"   ] = true,
-    ["new"   ] = true,
-    ["nil"   ] = true,
-    ["not"   ] = true,
-    ["or"    ] = true,
-    ["quote" ] = true,
-    ["rec"   ] = true,
-    ["redo"  ] = true,
-    ["return"] = true,
-    ["seq"   ] = true,
-    ["true"  ] = true,
-    ["when"  ] = true,
-    ["while" ] = true,
-    ["yield" ] = true,
+    ["and"    ] = true,
+    ["as"     ] = true,
+    ["break"  ] = true,
+    ["case"   ] = true,
+    ["cfn"    ] = true,
+    ["clone"  ] = true,
+    ["coro"   ] = true,
+    ["cycle"  ] = true,
+    ["do"     ] = true,
+    ["else"   ] = true,
+    ["enum"   ] = true,
+    ["false"  ] = true,
+    ["fn"     ] = true,
+    ["for"    ] = true,
+    ["glob"   ] = true,
+    ["goto"   ] = true,
+    ["if"     ] = true,
+    ["in"     ] = true,
+    ["let"    ] = true,
+    ["match"  ] = true,
+    ["mod"    ] = true,
+    ["new"    ] = true,
+    ["nil"    ] = true,
+    ["not"    ] = true,
+    ["or"     ] = true,
+    ["quote"  ] = true,
+    ["rec"    ] = true,
+    ["redo"   ] = true,
+    ["return" ] = true,
+    ["seq"    ] = true,
+    ["true"   ] = true,
+    ["unquote"] = true,
+    ["when"   ] = true,
+    ["while"  ] = true,
+    ["yield"  ] = true,
 
     ["__FILE__"] = true,
     ["__LINE__"] = true
@@ -194,10 +195,10 @@ end
 local cw, cy = coroutine.wrap, coroutine.yield
 local readstr = function(ls, prefixes, delim, long)
     cy()
-    local buf, levels, sp = {}, {}, prefixes or {}
+    local buf, sp = {}, prefixes or {}
     local raw, expand = sp.raw, sp.expand
 
-    cy("<string>", nil)
+    cy("<begstring>")
     while true do
         local curr = ls.current
         if not long then
@@ -277,18 +278,6 @@ local readstr = function(ls, prefixes, delim, long)
                 end
                 buf[#buf + 1] = read_dec_esc(ls)
             end
-        elseif curr == "[" or curr == "]" then
-            local c = curr
-            save_and_next_char(ls, buf)
-            local lev = 0
-            while ls.current == "=" do
-                lev = lev + 1
-                save_and_next_char(ls, buf)
-            end
-            if ls.current == c then
-                levels[lev] = true
-            end
-            save_and_next_char(ls, buf)
         elseif curr == "$" and expand then
             local str = concat(buf)
             buf = {}
@@ -319,7 +308,7 @@ local readstr = function(ls, prefixes, delim, long)
     end
     next_char(ls)
     cy("<string>", concat(buf))
-    return "<string>", levels
+    return "<endstring>"
 end
 
 local read_string = function(ls, prefixes)
@@ -346,7 +335,7 @@ lex = function(ls, token, instr)
             if rdr then
                 local tok, val = rdr()
                 -- terminating token
-                if type(val) == "table" then
+                if tok == "<endstring>" then
                     str_readers:pop()
                 end
                 token.value = val
