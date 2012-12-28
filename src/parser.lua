@@ -89,6 +89,7 @@ local Scope = util.Object:clone {
         if self.locked then return nil end
         local body = self.body
         body[#body + 1] = stat
+        return stat
     end,
 
     merge = function(self, sc)
@@ -347,18 +348,39 @@ M.Expr = Expr
 local Call_Expr
 local Value_Expr
 
+local gen_ctor = function(n)
+    return function(self, ps, ...)
+        Expr.__init(self, ps)
+        for i = 1, n do
+            self[i] = select(i, ...)
+        end
+    end
+end
+
+local gen_evalorder = function(expr, sc, symprefix, kwargs)
+    if expr:is_a(Value_Expr) then
+        return expr:generate(sc, kwargs)
+    else
+        local sym = unique_sym(symprefix)
+        sc:push(gen_local(sym, expr:generate(sc, kwargs)))
+        return sym
+    end
+end
+
+local gen_withtemp = function(expr, sc, symprefix, kwargs)
+    local sym = unique_sym(symprefix)
+    sc:push(gen_local(sym, expr:generate(sc, kwargs)))
+    return sym
+end
+
+-- { symbol }
 local Symbol_Expr = Expr:clone {
     name = "Symbol_Expr",
-
-    __init = function(self, ps, sym, rt)
-        Expr.__init(self, ps)
-        self.symbol, self.rt = sym, rt or false
-    end,
+    __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local sym = self.symbol
-        return self.rt and get_rt_fun(sym) or sym
+        return self[1]
     end,
 
     is_lvalue = function(self)
@@ -367,30 +389,15 @@ local Symbol_Expr = Expr:clone {
 }
 M.Symbol_Expr = Symbol_Expr
 
+-- { expr, index }
 local Index_Expr = Expr:clone {
     name = "Index_Expr",
-
-    __init = function(self, ps, expr, iexpr)
-        Expr.__init(self, ps)
-        self.expr, self.iexpr = expr, iexpr
-    end,
+    __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local ex, iex
-        if self.iexpr:is_a(Value_Expr) then
-            iex = self.iexpr:generate(sc, {})
-        else
-            local sym = unique_sym("index")
-            sc:push(gen_local(sym, self.iexpr:generate(sc, {})))
-            iex = sym
-        end
-        -- no need to check for value expr here because we are
-        -- sure it isn't one (not permitted by the syntax)
-        local sym = unique_sym("expr")
-        sc:push(gen_local(sym, self.expr:generate(sc, {})))
-        ex = sym
-        return gen_index(ex, iex), ex
+        return gen_index(gen_withtemp(self[1], sc, "expr", {}),
+            gen_evalorder(self[2], sc, "index", {}))
     end,
 
     is_lvalue = function(self)
@@ -2806,7 +2813,7 @@ local parse_object = function(ls)
 
         if tok.name ~= "{" then
             return Object_Expr(ls, el and el or {
-                Symbol_Expr(nil, "obj_def", true) }, cargs, {})
+                Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, {})
         end
     end
 
@@ -2815,7 +2822,7 @@ local parse_object = function(ls)
     if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, "obj_def", true) }, cargs, {})
+            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, {})
     end
 
     local tbl = {}
@@ -2843,7 +2850,7 @@ local parse_object = function(ls)
     assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, "obj_def", true) }, cargs, tbl)
+            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, tbl)
 end
 
 local parse_new = function(ls)
@@ -3060,7 +3067,8 @@ local parse_simpleexpr = function(ls)
         if #exprs > 1 then
             push_curline(ls)
             exprs[1] = Value_Expr(ls, value)
-            return Call_Expr(ls, Symbol_Expr(nil, "str_fmt", true), exprs)
+            return Call_Expr(ls, Symbol_Expr(nil, get_rt_fun("str_fmt")),
+                exprs)
         end
         return Value_Expr(ls, value)
     elseif name == "nil" or name == "true" or name == "false" then
