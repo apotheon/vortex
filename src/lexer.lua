@@ -622,6 +622,31 @@ local State_MT = {
     }
 }
 
+local skip_bom = function(rdr)
+    local c = rdr()
+    if c ~= 0xEF then return c end
+    c = rdr()
+    if c ~= 0xBB then return c end
+    c = rdr()
+    if c ~= 0xBF then return c end
+    return rdr()
+end
+
+local skip_shebang = function(rdr)
+    local c = skip_bom(rdr)
+    if c == "#" then
+        repeat
+            c = rdr()
+        until c == "\n" or c == "\r" or not c
+        local e = c
+        c = rdr()
+        if (e == "\n" and c == "\r") or (e == "\r" and c == "\n") then
+            c = rdr()
+        end
+    end
+    return c
+end
+
 return {
     -- sets up the lexer state
     init = function(fname, reader)
@@ -631,12 +656,12 @@ return {
                 name    = nil,      -- semantic value (i.e. a string literal)
                 value   = nil
             },
-            ltoken   = {         -- the lookahead token, used when required
+            ltoken   = {            -- the lookahead token, used when required
                 name    = nil,
                 value   = nil 
             },
             source      = fname,    -- the source (a filename or stdin or w/e)
-            current     = reader(), -- the current character (from reader)
+            current     = skip_shebang(reader), -- the current character
             line_number = 1,        -- the current line number
             last_line   = 1         -- previous line number
         }, State_MT)
