@@ -351,14 +351,14 @@ local Value_Expr
 local gen_ctor = function(n)
     return function(self, ps, ...)
         Expr.__init(self, ps)
-        for i = 1, n do
+        for i = 1, n or select("#", ...) do
             self[i] = select(i, ...)
         end
     end
 end
 
-local gen_evalorder = function(expr, sc, symprefix, kwargs)
-    if expr:is_a(Value_Expr) then
+local gen_evalorder = function(expr, sc, symprefix, kwargs, cond)
+    if expr:is_a(Value_Expr) or (cond == nil and true or cond) then
         return expr:generate(sc, kwargs)
     else
         local sym = unique_sym(symprefix)
@@ -406,93 +406,63 @@ local Index_Expr = Expr:clone {
 }
 M.Index_Expr = Index_Expr
 
+-- { value }
 Value_Expr = Expr:clone {
     name = "Value_Expr",
-
-    __init = function(self, ps, val)
-        Expr.__init(self, ps)
-        self.value = val
-    end,
+    __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local v = self.value
-        if type(v) == "string" then
-            return gen_str(v)
-        end
+        local v = self[1]
+        if type(v) == "string" then return gen_str(v) end
         return tostring(v)
     end
 }
 M.Value_Expr = Value_Expr
 
+-- {}
 local Vararg_Expr = Expr:clone {
     name = "Vararg_Expr",
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local sl = get_rt_fun("select")
-        return sl .. "(" .. (sc.fstate.ndefargs + 1) .. ", ...)"
+        return gen_call(get_rt_fun("select"),
+            gen_seq({ sc.fstate.ndefargs + 1, "..."}))
     end
 }
 M.Vararg_Expr = Vararg_Expr
 
+-- { expr1, expr2, expr3, ... }
 local Return_Expr = Expr:clone {
     name = "Return_Expr",
-
-    __init = function(self, ps, exprs)
-        Expr.__init(self, ps)
-        self.exprs = exprs
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        local exprs = self.exprs
-        local len   = #exprs
-
-        local exps = {}
+        local len, exprs = #self, {}
         for i = 1, len do
-            local expr = exprs[i]
-            if expr:is_a(Value_Expr) or i == len then
-                exps[#exps + 1] = expr:generate(sc, {})
-            else
-                local sym = unique_sym("ret")
-                sc:push(gen_local(sym, expr:generate(sc, {})))
-                exps[#exps + 1] = sym
-            end
+            exprs[i] = gen_evalorder(self[i], sc, "ret", {}, i == len)
         end
-        sc:push(gen_ret(gen_seq(exps)))
+        sc:push(gen_ret(gen_seq(exprs)))
         sc:lock()
     end
 }
 M.Return_Expr = Return_Expr
 
+-- { expr1, expr2, expr3, ... }
 local Yield_Expr = Expr:clone {
     name = "Yield_Expr",
-
-    __init = function(self, ps, exprs)
-        Expr.__init(self, ps)
-        self.exprs = exprs
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         local cy = get_rt_fun("coro_yield")
-        local exprs = self.exprs
-        local len   = #exprs
-
-        local exps = {}
+        local len, exprs = #self, {}
         for i = 1, len do
-            local expr = exprs[i]
-            if expr:is_a(Value_Expr) or i == len then
-                exps[#exps + 1] = expr:generate(sc, {})
-            else
-                local sym = unique_sym("yield")
-                sc:push(gen_local(sym, expr:generate(sc, {})))
-                exps[#exps + 1] = sym
-            end
+            exprs[i] = gen_evalorder(self[i], sc, "yield", {}, i == len)
         end
         if kwargs.statement then
-            sc:push(gen_call(cy, gen_seq(exps)))
+            sc:push(gen_call(cy, gen_seq(exprs)))
         else
-            return gen_call(cy, gen_seq(exps))
+            return gen_call(cy, gen_seq(exprs))
         end
     end,
 
@@ -2760,9 +2730,9 @@ local parse_return = function(ls)
         local exprs = parse_exprlist(ls)
         assert_tok(ls, ")")
         ls:get()
-        return Return_Expr(ls, exprs)
+        return Return_Expr(ls, unpack(exprs))
     end
-    return Return_Expr(ls, { parse_expr(ls) })
+    return Return_Expr(ls, parse_expr(ls))
 end
 
 local parse_yield = function(ls)
@@ -2773,9 +2743,9 @@ local parse_yield = function(ls)
         local exprs = parse_exprlist(ls)
         assert_tok(ls, ")")
         ls:get()
-        return Yield_Expr(ls, exprs)
+        return Yield_Expr(ls, unpack(exprs))
     end
-    return Yield_Expr(ls, { parse_expr(ls) })
+    return Yield_Expr(ls, parse_expr(ls))
 end
 
 local parse_primaryexpr
