@@ -522,7 +522,7 @@ local Block_Expr = Expr:clone {
     end,
 
     is_multret = function(self)
-        local vexpr = self.vexpr
+        local vexpr = self[1]
         return vexpr and vexpr:is_multret()
     end
 }
@@ -650,6 +650,7 @@ local Object_Expr = Expr:clone {
 }
 M.Object_Expr = Object_Expr
 
+-- { expr, ex1, ex2, ex3, ... }
 local New_Expr = Expr:clone {
     name = "New_Expr",
     __init = gen_ctor(),
@@ -672,6 +673,7 @@ M.New_Expr = New_Expr
 
 local Pack_Expr
 
+-- { op, lhs, rhs }
 local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
     __init = gen_ctor(3),
@@ -721,15 +723,16 @@ local Binary_Expr = Expr:clone {
     end,
 
     is_lvalue = function(self)
-        return Ass_Ops[self.op] and true or false
+        return Ass_Ops[self[1]] and true or false
     end,
 
     is_multret = function(self)
-        return (Ass_Ops[self.op] and self.lhs:is_multret())
+        return (Ass_Ops[self[1]] and self[2]:is_multret())
     end
 }
 M.Binary_Expr = Binary_Expr
 
+-- { op, rhs }
 local Unary_Expr = Expr:clone {
     name = "Unary_Expr",
     __init = gen_ctor(2),
@@ -741,6 +744,7 @@ local Unary_Expr = Expr:clone {
 }
 M.Unary_Expr = Unary_Expr
 
+-- { args, defargs, body }
 local Function_Expr = Expr:clone {
     name = "Function_Expr",
 
@@ -748,31 +752,26 @@ local Function_Expr = Expr:clone {
         Expr.__init(self, ps)
         ps.fnstack:pop()
         ps.lpstack:pop()
-        self.params, self.defaults, self.body = params, defaults, body
+        self[1], self[2], self[3] = params, defaults, body
     end,
 
     generate = function(self, sc, kwargs)
         local fs = new_fn_scope(sc)
 
-        local args,  defs  = self.params, self.defaults
+        local args,  defs  = self[1], self[2]
         local nargs, ndefs = #args, #defs
-
-        fs.nargs = nargs
-        fs.ndefargs = ndefs
 
         if args[#args] == "..." then
             nargs = nargs - 1
+            fs.vararg = true
         end
+
+        fs.nargs, fs.ndefargs = nargs, ndefs
         local pargs = nargs - ndefs
 
         local np = {}
-        for i = 1, pargs do
-            np[#np + 1] = args[i]
-        end
-
-        if (ndefs > 0 or args[#args] == "...") then
-            np[#np + 1] = "..."
-        end
+        for i = 1, pargs do np[#np + 1] = args[i] end
+        if (ndefs > 0 or args[#args] == "...") then np[#np + 1] = "..." end
 
         if ndefs > 0 then
             local sl = get_rt_fun("select")
@@ -803,11 +802,10 @@ local Function_Expr = Expr:clone {
         end
 
         -- avoid temps
-        local body = self.body
+        local body = self[3]
         if body:is_a(Block_Expr) then
             body:generate(fs, {
-                no_scope = true,
-                return_val = true
+                no_scope = true, return_val = true
             })
         else
             local ret = body:generate(fs, {
@@ -824,35 +822,28 @@ local Function_Expr = Expr:clone {
 }
 M.Function_Expr = Function_Expr
 
+-- { cond, tval, fval }
 local If_Expr = Expr:clone {
     name = "If_Expr",
-
-    __init = function(self, ps, cond, tval, fval)
-        Expr.__init(self, ps)
-        self.cond, self.tval, self.fval = cond, tval, fval
-    end,
+    __init = gen_ctor(3),
 
     generate = function(self, sc, kwargs)
         local stat, rval, tsc, fsc, tval, fval, tscoped, fscoped
             = kwargs.statement, kwargs.return_val
 
-        local tv, fv = self.tval, self.fval
+        local tv, fv = self[2], self[3]
 
         tscoped = tv:is_scoped()
         tsc  = new_scope(sc)
         tval = tv:generate(tsc, {
-            no_scope  = true,
-            statement = stat,
-            return_val = rval
+            no_scope  = true, statement = stat, return_val = rval
         })
 
         if fv then
             fscoped = fv:is_scoped()
             fsc  = new_scope(sc)
             fval = fv:generate(fsc, {
-                no_scope  = true,
-                statement = stat,
-                return_val = rval
+                no_scope  = true, statement = stat, return_val = rval
             })
         end
 
@@ -861,7 +852,7 @@ local If_Expr = Expr:clone {
             if fsc then fsc:push((rval and not fscoped)
                 and gen_ret(fval) or fval) end
 
-            sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
+            sc:push(gen_if(self[1]:generate(sc, {}), tsc, fsc))
         else
             local sym = unique_sym("if")
 
@@ -875,12 +866,12 @@ local If_Expr = Expr:clone {
                     ffsc:push(gen_ret(fval))
                     fsc:push(gen_ass(sym, gen_fun("", ffsc)))
                 end
-                sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
+                sc:push(gen_if(self[1]:generate(sc, {}), tsc, fsc))
                 return gen_call(sym, "")
             else
                 tsc:push(gen_ass(sym, tval))
                 if fsc then fsc:push(gen_ass(sym, fval)) end
-                sc:push(gen_if(self.cond:generate(sc, {}), tsc, fsc))
+                sc:push(gen_if(self[1]:generate(sc, {}), tsc, fsc))
                 return sym
             end
         end
@@ -891,8 +882,8 @@ local If_Expr = Expr:clone {
     end,
 
     is_multret = function(self)
-        local fv = self.fval
-        return self.tval:is_multret() or (fv and fv:is_multret())
+        local fv = self[3]
+        return self[2]:is_multret() or (fv and fv:is_multret())
     end
 }
 M.If_Expr = If_Expr
@@ -1533,6 +1524,7 @@ local For_Range_Expr = Expr:clone {
 }
 M.For_Range_Expr = For_Range_Expr
 
+-- {}
 local Break_Expr = Expr:clone {
     name = "Break_Expr",
 
@@ -1542,6 +1534,7 @@ local Break_Expr = Expr:clone {
 }
 M.Break_Expr = Break_Expr
 
+-- {}
 local Cycle_Expr = Expr:clone {
     name = "Cycle_Expr",
 
@@ -1551,6 +1544,7 @@ local Cycle_Expr = Expr:clone {
 }
 M.Cycle_Expr = Cycle_Expr
 
+-- {}
 local Redo_Expr = Expr:clone {
     name = "Redo_Expr",
 
