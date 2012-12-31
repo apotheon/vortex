@@ -1560,6 +1560,7 @@ local Redo_Expr = Expr:clone {
 }
 M.Redo_Expr = Redo_Expr
 
+-- { expr }
 local Seq_Expr = Expr:clone {
     name = "Seq_Expr",
 
@@ -1567,18 +1568,15 @@ local Seq_Expr = Expr:clone {
         Expr.__init(self, ps)
         ps.fnstack:pop()
         ps.lpstack:pop()
-        self.expr = expr
+        self[1] = expr
     end,
 
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
-
-        local fs = new_scope(sc)
-        local body = self.expr
+        local fs, body = new_scope(sc), self[1]
         if body:is_a(Block_Expr) then
             body:generate(fs, {
-                no_scope = true,
-                return_val = true
+                no_scope = true, return_val = true
             })
         else
             local ret = body:generate(fs, {
@@ -1627,37 +1625,31 @@ Pack_Expr = Expr:clone {
 }
 M.Pack_Expr = Pack_Expr
 
+-- { expr }
 local Quote_Expr = Expr:clone {
     name = "Quote_Expr",
-
-    __init = function(self, ps, expr)
-        Expr.__init(self, ps)
-        self.expr = expr
-    end,
+    __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
-        return self.expr:to_lua(sc, kwargs)
+        return self[1]:to_lua(sc, kwargs)
     end
 }
 M.Quote_Expr = Quote_Expr
 
+-- { expr }
 local Unquote_Expr = Expr:clone {
     name = "Unquote_Expr",
-
-    __init = function(self, ps, expr)
-        Expr.__init(self, ps)
-        self.expr = expr
-    end,
+    __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
-        return self.expr:generate(sc, kwargs)
+        return self[1]:generate(sc, kwargs)
     end,
 
     to_lua = function(self, sc, kwargs)
         local slf = get_rt_fun("parser")
         return gen_index(slf, gen_string("Value_Expr")) .. "("
             .. serialize(self.dinfo) .. ", "
-            .. self.expr:generate(sc, kwargs) .. ")"
+            .. self[1]:generate(sc, kwargs) .. ")"
     end
 }
 M.Unquote_Expr = Unquote_Expr
@@ -1705,34 +1697,27 @@ local Enum_Expr = Expr:clone {
 }
 M.Enum_Expr = Enum_Expr
 
+-- { mcall, expr, ex1, ex2, ex3, ... }
 Call_Expr = Expr:clone {
     name = "Call_Expr",
-
-    __init = function(self, ps, expr, params, method)
-        Expr.__init(self, ps)
-        self.expr, self.params, self.method = expr, params,
-            method or false
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         local syms = {}
-        local len  = #self.params
-        local method = self.method
+        local mcall, len = self[1], #self
 
-        local expr, slf = self.expr:generate(sc, {})
-        if method then
-            syms[1] = slf
+        local expr, n = nil, 0
+        if mcall then
+            local sym = unique_sym("self")
+            sc:push(gen_local(sym, mcall:generate(sc, {})))
+            syms[1], expr = sym, gen_index(sym, self[2]:generate(sc, {}))
+            n = 1
+        else
+            expr = self[2]:generate(sc, {})
         end
-        local off = method and 1 or 0
-        for i = 1, len do
-            local par = self.params[i]
-            if par:is_a(Value_Expr) or i == len then
-                syms[i + off] = par:generate(sc, {})
-            else
-                local sym = unique_sym("arg")
-                sc:push(gen_local(sym, par:generate(sc, {})))
-                syms[i + off] = sym
-            end
+
+        for i = 3, len do
+            syms[i + n - 2] = gen_evalorder(self[i], sc, "arg", {}, i == len)
         end
         syms = gen_seq(syms)
 
@@ -1873,13 +1858,13 @@ local parse_table = function(ls)
 
     local idx = 1
     repeat
-        if tok.name == "<ident>" and ls:lookahead() == "=" then
+        if tok.name == "<ident>" and ls:lookahead() == ":" then
             local name = Value_Expr(nil, tok.value)
             ls:get() ls:get()
             tbl[#tbl + 1] = { name, parse_expr(ls) }
         elseif tok.name == "$" or tok.name == "$(" then
             local expr = parse_expr(ls)
-            if tok.name == "=" then
+            if tok.name == ":" then
                 ls:get()
                 tbl[#tbl + 1] = { expr, parse_expr(ls) }
             else
@@ -2790,8 +2775,7 @@ local parse_suffixedexpr = function(ls)
                     assert_tok(ls, ")")
                     ls:get()
                 end
-                exp = Call_Expr(ls, Index_Expr(ls, exp,
-                    Value_Expr(ls, s)), el, true)
+                exp = Call_Expr(ls, exp, Value_Expr(ls, s), unpack(el))
             else
                 exp = Index_Expr(ls, exp, Value_Expr(ls, s))
             end
@@ -2814,7 +2798,7 @@ local parse_suffixedexpr = function(ls)
                 assert_tok(ls, ")")
                 ls:get()
             end
-            exp = Call_Expr(ls, exp, el)
+            exp = Call_Expr(ls, false, exp, unpack(el))
         else
             return exp
         end
@@ -2929,8 +2913,8 @@ local parse_simpleexpr = function(ls)
         if #exprs > 1 then
             push_curline(ls)
             exprs[1] = Value_Expr(ls, value)
-            return Call_Expr(ls, Symbol_Expr(nil, get_rt_fun("str_fmt")),
-                exprs)
+            return Call_Expr(ls, false, Symbol_Expr(nil, get_rt_fun("str_fmt")),
+                unpack(exprs))
         end
         return Value_Expr(ls, value)
     elseif name == "nil" or name == "true" or name == "false" then
