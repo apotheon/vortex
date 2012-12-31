@@ -472,50 +472,33 @@ local Yield_Expr = Expr:clone {
 }
 M.Yield_Expr = Yield_Expr
 
+-- { value, expr1, expr2, expr3, ... }
 local Block_Expr = Expr:clone {
     name = "Block_Expr",
-
-    __init = function(self, ps, exprs, vexpr)
-        Expr.__init(self, ps)
-        self.exprs, self.vexpr = exprs, vexpr
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        local exprs, vexpr = self.exprs, self.vexpr
-        local len   = #exprs
-
+        local len = #self
         local no_scope = kwargs.no_scope
         local scope = (not no_scope) and new_scope(sc) or sc
 
-        for i = 1, len do
-            exprs[i]:generate(scope, {
-                statement = true
-            })
-        end
-
+        for i = 2, len do self[i]:generate(scope, { statement = true }) end
+        local  vexpr = self[1]
         if not vexpr then
-            if not no_scope then
-                sc:push(gen_block(scope))
-            end
+            if not no_scope then sc:push(gen_block(scope)) end
             return nil
         end
 
         if kwargs.return_val and vexpr:is_scoped() then
-            sc:push(vexpr:generate(sc, {
-                return_val = true
-            }))
+            sc:push(vexpr:generate(sc, { return_val = true }))
         elseif no_scope then
             if sc.fstate == sc or kwargs.return_val then
                 sc:push(gen_ret(vexpr:generate(sc, {})))
             else
-                return vexpr:generate(sc, {
-                    statement = kwargs.statement
-                })
+                return vexpr:generate(sc, { statement = kwargs.statement })
             end
         elseif kwargs.statement then
-            scope:push(vexpr:generate(scope, {
-                statement = true
-            }))
+            scope:push(vexpr:generate(scope, { statement = true }))
             sc:push(gen_block(scope))
         else
             local sym = unique_sym("block")
@@ -545,54 +528,30 @@ local Block_Expr = Expr:clone {
 }
 M.Block_Expr = Block_Expr
 
+-- { { key, val }, { key, val }, ... }
 local Table_Expr = Expr:clone {
     name = "Table_Expr",
-
-    __init = function(self, ps, contents)
-        Expr.__init(self, ps)
-        self.contents = contents
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local tbl = self.contents
 
         sc.indent = sc.indent + 1
         local kvs = {}
-        local len = #tbl
+        local len = #self
         for i = 1, len do
-            local pair = tbl[i]
+            local pair = self[i]
             local ke, ve = pair[1], pair[2]
             if (type(ke) == "number") then
-                if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = ve:generate(sc, {})
-                else
-                    local sym = unique_sym("arr")
-                    sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = sym
-                end
+                kvs[#kvs + 1] = gen_evalorder(ve, sc, "arr", {}, i == len)
             elseif ke:is_a(Value_Expr) then
-                if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
-                        ve:generate(sc, {}))
-                else
-                    local sym = unique_sym("map")
-                    sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
-                        sym)
-                end
+                kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
+                    gen_evalorder(ve, sc, "map", {}, i == len))
             else
                 local ksym = unique_sym("key")
                 sc:push(gen_local(ksym, ke:generate(sc, {})))
-                if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
-                        ve:generate(sc, {}))
-                else
-                    local sym = unique_sym("map")
-                    sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. sym .. "]",
-                        sym)
-                end
+                kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
+                    gen_evalorder(ve, sc, "map", {}, i == len))
             end
         end
         sc.indent = sc.indent - 1
@@ -602,30 +561,17 @@ local Table_Expr = Expr:clone {
 }
 M.Table_Expr = Table_Expr
 
+-- { ex1, ex2, ex3, ... }
 local List_Expr = Expr:clone {
     name = "List_Expr",
-
-    __init = function(self, ps, contents)
-        Expr.__init(self, ps)
-        self.contents = contents
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        local lst = self.contents
-
-        local syms, len = {}, #lst
+        local syms, len = {}, #self
         for i = 1, len do
-            local expr = lst[i]
-            if i == len or expr:is_a(Value_Expr) then
-                syms[i] = expr:generate(sc, {})
-            else
-                local sym = unique_sym("list")
-                sc:push(gen_local(sym, expr:generate(sc, {})))
-                syms[i] = sym
-            end
+            syms[i] = gen_evalorder(self[i], sc, "list", {}, i == len)
         end
-
         return gen_list(sc, syms)
     end
 }
@@ -706,30 +652,18 @@ M.Object_Expr = Object_Expr
 
 local New_Expr = Expr:clone {
     name = "New_Expr",
-
-    __init = function(self, ps, expr, exprlist)
-        Expr.__init(self, ps)
-        self.expr, self.exprlist = expr, exprlist
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
 
         local fun = get_rt_fun("obj_new")
-        local expr, el = self.expr, self.exprlist
         local sym = unique_sym("new")
-        sc:push(gen_local(sym, expr:generate(sc, {})))
+        sc:push(gen_local(sym, self[1]:generate(sc, {})))
 
-        local len, t = #el, { sym }
+        local len, t = #self, { sym }
         for i = 1, len do
-            local exp = el[i]
-            if i == len or exp:is_a(Value_Expr) then
-                t[i + 1] = exp:generate(sc, {})
-            else
-                local sym = unique_sym("ctor")
-                sc:push(gen_local(sym, exp:generate(sc, {})))
-                t[i + 1] = sym
-            end
+            t[i + 1] = gen_evalorder(self[i], sc, "ctor", {}, i == len)
         end
         return gen_call(fun, gen_seq(t))
     end
@@ -740,14 +674,10 @@ local Pack_Expr
 
 local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
-
-    __init = function(self, ps, op, lhs, rhs)
-        Expr.__init(self, ps)
-        self.op, self.lhs, self.rhs = op, lhs, rhs
-    end,
+    __init = gen_ctor(3),
 
     generate = function(self, sc, kwargs)
-        local op, lhs, rhs = self.op, self.lhs, self.rhs
+        local op, lhs, rhs = self[1], self[2], self[3]
         if not Ass_Ops[op] then
             if not kwargs.statement then
                 return gen_binexpr(op, lhs:generate(sc, {}),
@@ -802,15 +732,11 @@ M.Binary_Expr = Binary_Expr
 
 local Unary_Expr = Expr:clone {
     name = "Unary_Expr",
-
-    __init = function(self, ps, op, rhs)
-        Expr.__init(self, ps)
-        self.op, self.rhs = op, rhs
-    end,
+    __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
-        local rhs = self.rhs:generate(sc, {})
-        return gen_unexpr(self.op, rhs)
+        if kwargs.statement then return nil end
+        return gen_unexpr(self[1], self[2]:generate(sc, {}))
     end
 }
 M.Unary_Expr = Unary_Expr
@@ -1899,7 +1825,7 @@ local parse_block = function(ls)
 
     if tok.name == "}" then
         ls:get()
-        return Block_Expr(ls, exprs)
+        return Block_Expr(ls)
     end
 
     if tok.name == "->" then
@@ -1921,18 +1847,18 @@ local parse_block = function(ls)
             push_curline(ls)
             assert_tok(ls, "}")
             ls:get()
-            return Block_Expr(ls, exprs, Pack_Expr(ls, el))
+            return Block_Expr(ls, Pack_Expr(ls, el), unpack(exprs))
         else
             local exp = parse_expr(ls)
             assert_tok(ls, "}")
             ls:get()
-            return Block_Expr(ls, exprs, exp)
+            return Block_Expr(ls, exp, unpack(exprs))
         end
     end
 
     assert_tok(ls, "}")
     ls:get()
-    return Block_Expr(ls, exprs)
+    return Block_Expr(ls, nil, unpack(exprs))
 end
 
 local parse_table = function(ls)
@@ -1942,7 +1868,7 @@ local parse_table = function(ls)
 
     if tok.name == "]" then
         ls:get()
-        return Table_Expr(ls, tbl)
+        return Table_Expr(ls)
     end
 
     local idx = 1
@@ -1974,7 +1900,7 @@ local parse_table = function(ls)
     assert_tok(ls, "]")
     ls:get()
 
-    return Table_Expr(ls, tbl)
+    return Table_Expr(ls, unpack(tbl))
 end
 
 local parse_list = function(ls)
@@ -2173,13 +2099,6 @@ local parse_function = function(ls, obj)
         end
         fnexpr = Function_Expr(ls, ids, defs,
             Match_Expr(ls, el, parse_match_body(ls)))
-    --elseif n == "(" then
-    --    ls:get()
-    --    local el = parse_exprlist(ls)
-    --    assert_tok(ls, ")")
-    --    ls:get()
-    --    push_curline(ls)
-    --    fnexpr = Function_Expr(ls, ids, defs, Pack_Expr(ls, el))
     else
         fnexpr = Function_Expr(ls, ids, defs, parse_expr(ls))
     end
@@ -2252,15 +2171,6 @@ local parse_sequence = function(ls)
     assert_tok(ls, "->")
     ls:get()
 
-    if tok.name == "(" then
-        ls:get()
-        local el = parse_exprlist(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        push_curline(ls)
-        return Seq_Expr(ls, Pack_Expr(ls, el))
-    end
-
     return Seq_Expr(ls, parse_expr(ls))
 end
 
@@ -2276,15 +2186,6 @@ local parse_quote = function(ls)
     assert_tok(ls, "->")
     ls:get()
 
-    if tok.name == "(" then
-        ls:get()
-        local el = parse_exprlist(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        push_curline(ls)
-        return Quote_Expr(ls, Pack_Expr(ls, el))
-    end
-
     return Quote_Expr(ls, parse_expr(ls))
 end
 
@@ -2299,15 +2200,6 @@ local parse_unquote = function(ls)
 
     assert_tok(ls, "->")
     ls:get()
-
-    if tok.name == "(" then
-        ls:get()
-        local el = parse_exprlist(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        push_curline(ls)
-        return Unquote_Expr(ls, Pack_Expr(ls, el))
-    end
 
     return Unquote_Expr(ls, parse_expr(ls))
 end
@@ -2832,12 +2724,12 @@ local parse_new = function(ls)
     ls:get()
     if tok.name == ")" then
         ls:get()
-        return New_Expr(ls, pex, {})
+        return New_Expr(ls, pex)
     end
     local el = parse_exprlist(ls)
     assert_tok(ls, ")")
     ls:get()
-    return New_Expr(ls, pex, el)
+    return New_Expr(ls, pex, unpack(el))
 end
 
 local parse_binexpr
