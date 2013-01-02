@@ -261,6 +261,9 @@ local readstr = function(ls, prefixes, delim, long)
                         next_char(ls)
                     end
                 end
+            elseif curr == "$" and expand then
+                buf[#buf + 1] = raw and "\\$" or "$"
+                next_char(ls)
             elseif curr == "\n" or curr == "\r" then
                 next_line(ls)
                 if raw then
@@ -283,11 +286,10 @@ local readstr = function(ls, prefixes, delim, long)
             local str = concat(buf)
             buf = {}
             cy("<string>", str)
-            cy("$", nil)
             local c = next_char(ls)
             local tok = {}
             if c == "(" then
-                cy("(", nil)
+                cy("$(", nil)
                 next_char(ls)
                 repeat
                     local name = lex(ls, tok, true)
@@ -296,6 +298,7 @@ local readstr = function(ls, prefixes, delim, long)
                 cy(")", nil)
                 next_char(ls)
             else
+                cy("$", nil)
                 local name = lex(ls, tok, true)
                 if name == "<ident>" then
                     cy(name, tok.value)

@@ -61,6 +61,9 @@ local Stack = util.Stack
 local serialize = util.serialize
 
 local get_rt_fun
+local lazy_rt_fun = function(name)
+    return function() return get_rt_fun(name) end
+end
 
 local assert_tok = function(ls, ...)
     local n = ls.token.name
@@ -386,7 +389,8 @@ local Symbol_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
-        return self[1]
+        local r = self[1]
+        return type(r) ~= "string" and r() or r
     end,
 
     is_lvalue = function(self)
@@ -2634,7 +2638,7 @@ local parse_object = function(ls)
 
         if tok.name ~= "{" then
             return Object_Expr(ls, el and el or {
-                Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs)
+                Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs)
         end
     end
 
@@ -2643,7 +2647,7 @@ local parse_object = function(ls)
     if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs)
+            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs)
     end
 
     local tbl = {}
@@ -2671,7 +2675,7 @@ local parse_object = function(ls)
     assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, unpack(tbl))
+            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs, unpack(tbl))
 end
 
 local parse_new = function(ls)
@@ -2889,8 +2893,8 @@ local parse_simpleexpr = function(ls)
         if #exprs > 1 then
             push_curline(ls)
             exprs[1] = Value_Expr(ls, value)
-            return Call_Expr(ls, false, Symbol_Expr(nil, get_rt_fun("str_fmt")),
-                unpack(exprs))
+            return Call_Expr(ls, false, Symbol_Expr(nil,
+                lazy_rt_fun("str_fmt")), unpack(exprs))
         end
         return Value_Expr(ls, value)
     elseif name == "nil" or name == "true" or name == "false" then
