@@ -341,6 +341,10 @@ local Expr = util.Object:clone {
         local slf = get_rt_fun("parser")
         return gen_index(slf, gen_string(self.name)) .. "("
             .. concat(params, ",") .. ")"
+    end,
+
+    is_ending = function(self)
+        return false
     end
 }
 M.Expr = Expr
@@ -360,6 +364,8 @@ end
 local gen_evalorder = function(expr, sc, symprefix, kwargs, cond)
     if expr:is_a(Value_Expr) or (cond == nil and true or cond) then
         return expr:generate(sc, kwargs)
+    elseif kwargs.statement then
+        expr:generate(sc, kwargs)
     else
         local sym = unique_sym(symprefix)
         sc:push(gen_local(sym, expr:generate(sc, kwargs)))
@@ -433,6 +439,36 @@ local Vararg_Expr = Expr:clone {
 M.Vararg_Expr = Vararg_Expr
 
 -- { expr1, expr2, expr3, ... }
+local Result_Expr = Expr:clone {
+    name = "Result_Expr",
+    __init = gen_ctor(),
+
+    generate = function(self, sc, kwargs)
+        local len, exprs = #self, {}
+        for i = 1, len do
+            exprs[i] = gen_evalorder(self[i], sc, "ret", kwargs, i == len)
+        end
+        if kwargs.return_val then
+            sc:push(gen_ret(gen_seq(exprs)))
+            sc:lock()
+        elseif kwargs.statement then
+            return nil
+        else
+            return gen_seq(exprs)
+        end
+    end,
+
+    is_multret = function(self)
+        return (#self > 1) or (self[1]:is_multret())
+    end,
+
+    is_ending = function(self)
+        return true
+    end
+}
+M.Return_Expr = Return_Expr
+
+-- { expr1, expr2, expr3, ... }
 local Return_Expr = Expr:clone {
     name = "Return_Expr",
     __init = gen_ctor(),
@@ -444,6 +480,10 @@ local Return_Expr = Expr:clone {
         end
         sc:push(gen_ret(gen_seq(exprs)))
         sc:lock()
+    end,
+
+    is_ending = function(self)
+        return true
     end
 }
 M.Return_Expr = Return_Expr
@@ -467,12 +507,12 @@ local Yield_Expr = Expr:clone {
     end,
 
     is_multret = function(self)
-        return true
+        return (#self > 0) or (self[1]:is_multret())
     end
 }
 M.Yield_Expr = Yield_Expr
 
--- { value, expr1, expr2, expr3, ... }
+-- { expr1, expr2, expr3, ... }
 local Block_Expr = Expr:clone {
     name = "Block_Expr",
     __init = gen_ctor(),
@@ -482,9 +522,14 @@ local Block_Expr = Expr:clone {
         local no_scope = kwargs.no_scope
         local scope = (not no_scope) and new_scope(sc) or sc
 
-        for i = 2, len do self[i]:generate(scope, { statement = true }) end
-        local  vexpr = self[1]
-        if not vexpr then
+        for i = 1, len - 1 do
+            self[i]:generate(scope, { statement = true })
+        end
+        local vexpr = self[len]
+        -- no need to handle this for other "statements" - the parser only
+        -- allows result/return at the end of the block
+        if not vexpr:is_a(Result_Expr) and not vexpr:is_a(Return_Expr) then
+            vexpr:generate(scope, { statement = true })
             if not no_scope then sc:push(gen_block(scope)) end
             return nil
         end
@@ -577,74 +622,60 @@ local List_Expr = Expr:clone {
 }
 M.List_Expr = List_Expr
 
+-- { parents, ctor, { name, expr }, { name, expr }, ... }
 local Object_Expr = Expr:clone {
     name = "Object_Expr",
-
-    __init = function(self, ps, parents, ctor, body)
-        Expr.__init(self, ps)
-        self.parents, self.ctor, self.body = parents, ctor, body
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         if kwargs.statement then return nil end
 
-        local pars, body, ctor = self.parents, self.body, self.ctor
+        local pars, ctor = self[1], self[2]
+
         local syms, len = {}, #pars
         for i = 1, len do
             if i == len then
-                syms[i] = pars[i]:generate(sc, {})
+                syms[i] = self[i]:generate(sc, {})
             else
-                local sym = unique_sym("par")
-                sc:push(gen_local(sym, pars[i]:generate(sc, {})))
+                local sym = unique_sym("parent")
+                sc:push(gen_local(sym, self[i]:generate(sc, {})))
                 syms[i] = sym
             end
         end
 
         local fun, kvs = get_rt_fun("obj_clone"), {}
-        if ctor then
-            local assrt = get_rt_fun("assert")
-            local pars = { "self", }
-            local ns = new_scope(sc)
+
+        if #ctor ~= 0 then
+            local asrt = get_rt_fun("assert")
+            local pars = { "self" }
+            local ns   = new_scope(sc)
             ns.indent = ns.indent + 1
             for i = 1, #ctor do
                 local it = ctor[i]
-                local name = it[1]
+                local name, cond = it[1], it[2]
                 pars[i + 1] = name
-                local cond = it[2]
                 if cond then
-                    ns:push(gen_call(assrt, cond:generate(ns, {})))
+                    ns:push(gen_call(asrt, cond:generate(ns, {})))
                 end
                 ns:push(gen_ass(gen_dindex("self", name), name))
             end
             kvs[#kvs + 1] = gen_ass("__init", gen_fun(gen_seq(pars), ns))
         end
-        for i = 1, #body do
-            local pair = body[i]
+
+        for i = 3, #self do
+            local pair = self[i]
             local ke, ve = pair[1], pair[2]
             if ke:is_a(Value_Expr) then
-                if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
-                        ve:generate(sc, {}))
-                else
-                    local sym = unique_sym("obj")
-                    sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
-                        sym)
-                end
+                kvs[#kvs + 1] = gen_ass("[" .. ke:generate(sc, {}) .. "]",
+                    gen_evalorder(ve, sc, "obj", {}, i == len))
             else
                 local ksym = unique_sym("key")
                 sc:push(gen_local(ksym, ke:generate(sc, {})))
-                if i == len or ve:is_a(Value_Expr) then
-                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
-                        ve:generate(sc, {}))
-                else
-                    local sym = unique_sym("map")
-                    sc:push(gen_local(sym, ve:generate(sc, {})))
-                    kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
-                        sym)
-                end
+                kvs[#kvs + 1] = gen_ass("[" .. ksym .. "]",
+                    gen_evalorder(ve, sc, "obj", {}, i == len))
             end
         end
+
         return gen_call(fun, gen_seq({ gen_table(sc, kvs), gen_seq(syms) }))
     end
 }
@@ -671,8 +702,6 @@ local New_Expr = Expr:clone {
 }
 M.New_Expr = New_Expr
 
-local Pack_Expr
-
 -- { op, lhs, rhs }
 local Binary_Expr = Expr:clone {
     name = "Binary_Expr",
@@ -689,34 +718,52 @@ local Binary_Expr = Expr:clone {
         end
 
         local lel = {}
-        if lhs:is_a(Pack_Expr) then
-            local pel = lhs.exprlist
-            for i = 1, #pel do
-                lel[i] = pel[i]:generate(sc, {})
+        if not lhs.name then
+            for i = 1, #lhs do
+                lel[i] = lhs[i]:generate(sc, {})
             end
         else
             lel[1] = lhs:generate(sc, {})
         end
-
         local ret = gen_seq(lel)
+
         if op == "=" then
-            sc:push(gen_ass(ret, rhs:generate(sc, {})))
-        else
-            local el  = rhs.exprlist
-            local bop, exps = op:sub(1, #op - 1), {}
-            for i = 1, #el do
-                local le, ge = lel[i], el[i]:generate(sc, {})
-                exps[i] = le and gen_binexpr(bop, le, ge) or ge
+            local rh
+            if not rhs.name then
+                local exs = {}
+                for i = 1, #rhs do
+                    exs[i] = rhs[i]:generate(sc, {})
+                end
+                rh = gen_seq(exs)
+            else
+                rh = rhs:generate(sc, {})
             end
-            local elen = #exps
-            local d = #lel - elen
+            sc:push(gen_ass(ret, rh))
+        else
+            local bop = op:sub(1, #op - 1)
+
+            local rel = {}
+            if not rhs.name then
+                for i = 1, #rhs do
+                    local le, ge = lel[i], rhs[i]:generate(sc, {})
+                    rel[i] = le and gen_binexpr(bop, le, ge) or ge
+                end
+            else
+                local le, ge = lel[1], rhs:generate(sc, {})
+                rel[1] = le and gen_binexpr(bop, le, ge) or ge
+            end
+
+            local rlen = #rel
+            local d = #lel - rlen
             if d > 0 then
-                for i = elen + 1, elen + d do
-                    exps[i] = lel[i]
+                for i = rlen + 1, rlen + d do
+                    rel[i] = lel[i]
                 end
             end
-            sc:push(gen_ass(ret, gen_seq(exps)))
+
+            sc:push(gen_ass(ret, gen_seq(rel)))
         end
+
         if not kwargs.statement then
             return ret
         end
@@ -1587,38 +1634,6 @@ local Seq_Expr = Expr:clone {
 }
 M.Seq_Expr = Seq_Expr
 
-Pack_Expr = Expr:clone {
-    name = "Pack_Expr",
-
-    __init = function(self, ps, exprlist)
-        Expr.__init(self, ps)
-        self.exprlist = exprlist
-    end,
-
-    generate = function(self, sc, kwargs)
-        local el, exprs = self.exprlist, {}
-        for i = 1, #el do
-            exprs[i] = el[i]:generate(sc, {})
-        end
-        return gen_seq(exprs)
-    end,
-
-    is_multret = function(self)
-        return true
-    end,
-
-    is_lvalue = function(self)
-        local el = self.exprlist
-        for i = 1, #el do
-            if not el[i]:is_lvalue() then
-                return false
-            end
-        end
-        return true
-    end
-}
-M.Pack_Expr = Pack_Expr
-
 -- { expr }
 local Quote_Expr = Expr:clone {
     name = "Quote_Expr",
@@ -1807,37 +1822,17 @@ local parse_block = function(ls)
         return Block_Expr(ls)
     end
 
-    if tok.name == "->" then
-        goto block_endexpr
-    end
-
     repeat
-        exprs[#exprs + 1] = parse_expr(ls)
-    until tok.name == "}" or tok.name == "->"
-
-    ::block_endexpr::
-    if tok.name == "->" then
-        ls:get()
-        if tok.name == "(" then
-            ls:get()
-            local el = parse_exprlist(ls)
-            assert_tok(ls, ")")
-            ls:get()
-            push_curline(ls)
-            assert_tok(ls, "}")
-            ls:get()
-            return Block_Expr(ls, Pack_Expr(ls, el), unpack(exprs))
-        else
-            local exp = parse_expr(ls)
-            assert_tok(ls, "}")
-            ls:get()
-            return Block_Expr(ls, exp, unpack(exprs))
+        local ex = parse_expr(ls)
+        exprs[#exprs + 1] = ex
+        if ex:is_ending() then
+            break
         end
-    end
+    until tok.name == "}"
 
     assert_tok(ls, "}")
     ls:get()
-    return Block_Expr(ls, nil, unpack(exprs))
+    return Block_Expr(ls, unpack(exprs))
 end
 
 local parse_table = function(ls)
@@ -2253,17 +2248,7 @@ local parse_if = function(ls)
     else
         assert_tok(ls, "->")
         ls:get()
-
-        if tok.name == "(" then
-            ls:get()
-            local el = parse_exprlist(ls)
-            assert_tok(ls, ")")
-            ls:get()
-            push_curline(ls)
-            tval = Pack_Expr(ls, el)
-        else
-            tval = parse_expr(ls)
-        end
+        tval = parse_expr(ls)
     end
 
     if tok.name == "else" then
@@ -2274,16 +2259,7 @@ local parse_if = function(ls)
             if tok.name == "->" then
                 ls:get()
             end
-            if tok.name == "(" then
-                ls:get()
-                local el = parse_exprlist(ls)
-                assert_tok(ls, ")")
-                ls:get()
-                push_curline(ls)
-                return If_Expr(ls, cond, tval, Pack_Expr(ls, el))
-            else
-                return If_Expr(ls, cond, tval, parse_expr(ls))
-            end
+            return If_Expr(ls, cond, tval, parse_expr(ls))
         end
     end
 
@@ -2470,16 +2446,7 @@ parse_match_body = function(ls)
         else
             assert_tok(ls, "->")
             ls:get()
-            if tok.name == "(" then
-                ls:get()
-                local el = parse_exprlist(ls)
-                assert_tok(ls, ")")
-                ls:get()
-                push_curline(ls)
-                body = Pack_Expr(ls, el)
-            else
-                body = parse_expr(ls)
-            end
+            body = parse_expr(ls)
         end
         ret[#ret + 1] = { pl, body }
     until tok.name ~= "|" and tok.name ~= "case"
@@ -2593,6 +2560,19 @@ local parse_for = function(ls)
     end
 end
 
+local parse_result = function(ls)
+    push_curline(ls)
+    ls:get()
+    if ls.token.name == "(" then
+        ls:get()
+        local exprs = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+        return Result_Expr(ls, unpack(exprs))
+    end
+    return Result_Expr(ls, parse_expr(ls))
+end
+
 local parse_return = function(ls)
     push_curline(ls)
     ls:get()
@@ -2654,7 +2634,7 @@ local parse_object = function(ls)
 
         if tok.name ~= "{" then
             return Object_Expr(ls, el and el or {
-                Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, {})
+                Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs)
         end
     end
 
@@ -2663,7 +2643,7 @@ local parse_object = function(ls)
     if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, {})
+            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs)
     end
 
     local tbl = {}
@@ -2691,7 +2671,7 @@ local parse_object = function(ls)
     assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, tbl)
+            Symbol_Expr(nil, get_rt_fun("obj_def")) }, cargs, unpack(tbl))
 end
 
 local parse_new = function(ls)
@@ -2840,6 +2820,8 @@ local parse_simpleexpr = function(ls)
         push_curline(ls)
         ls:get()
         return Redo_Expr(ls)
+    elseif name == "result" then
+        return parse_result(ls)
     elseif name == "return" then
         return parse_return(ls)
     elseif name == "yield" then
@@ -2941,7 +2923,7 @@ parse_binexpr = function(ls, mp)
             ls.ndstack:pop()
             lhs = el[1]
         else
-            lhs = Pack_Expr(ls, el)
+            lhs = el
         end
         assert_tok(ls, ")")
         ls:get()
@@ -2951,25 +2933,31 @@ parse_binexpr = function(ls, mp)
 
     local opn = tok.name
     local aop = Ass_Ops[opn]
-    if lhs:is_a(Pack_Expr) and not aop then
+    if not lhs.name and not aop then
         syntax_error(ls, "unexpected symbol")
     elseif aop then
-        if not lhs:is_lvalue() then
+        if not lhs.name then
+            for i = 1, #lhs do
+                if not lhs[i]:is_lvalue() then
+                    syntax_error(ls, "expected lvalue")
+                end
+            end
+        elseif not lhs:is_lvalue() then
             syntax_error(ls, "expected lvalue")
         end
         local op = tok.name
         ls:get()
-        local el
-        push_curline(ls)
+        local rhs
         if tok.name == "(" then
             ls:get()
-            el = parse_exprlist(ls)
+            local el = parse_exprlist(ls)
             assert_tok(ls, ")")
             ls:get()
+            rhs = el
         else
-            el = { parse_expr(ls) }
+            rhs = parse_expr(ls)
         end
-        return Binary_Expr(ls, opn, lhs, Pack_Expr(ls, el))
+        return Binary_Expr(ls, opn, lhs, rhs)
     end
 
     while true do
