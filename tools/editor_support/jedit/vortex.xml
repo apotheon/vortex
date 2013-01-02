@@ -142,6 +142,7 @@
             <KEYWORD1>cycle</KEYWORD1>
             <KEYWORD1>do</KEYWORD1>
             <KEYWORD1>else</KEYWORD1>
+            <KEYWORD1>enum</KEYWORD1>
             <KEYWORD3>false</KEYWORD3>
             <KEYWORD1>fn</KEYWORD1>
             <KEYWORD1>for</KEYWORD1>
@@ -158,6 +159,8 @@
             <KEYWORD1>or</KEYWORD1>
             <KEYWORD1>quote</KEYWORD1>
             <KEYWORD2>rec</KEYWORD2>
+            <KEYWORD1>redo</KEYWORD1>
+            <KEYWORD1>result</KEYWORD1>
             <KEYWORD1>return</KEYWORD1>
             <KEYWORD1>seq</KEYWORD1>
             <KEYWORD3>true</KEYWORD3>
