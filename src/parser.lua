@@ -941,107 +941,88 @@ local If_Expr = Expr:clone {
 }
 M.If_Expr = If_Expr
 
+-- { as, cond, lhs, rhs }
 local And_Pattern = Expr:clone {
     name = "And_Pattern",
-
-    __init = function(self, ps, lhs, rhs, as, cond)
-        Expr.__init(self, ps)
-        self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
-    end,
+    __init = gen_ctor(4),
 
     generate = function(self, sc, kwargs)
-        return gen_binexpr("and", self.lhs:generate(sc, kwargs),
-                                  self.rhs:generate(sc, kwargs))
+        return gen_binexpr("and", self[3]:generate(sc, kwargs),
+                                  self[4]:generate(sc, kwargs))
     end
 }
 M.And_Pattern = And_Pattern
 
+-- { as, cond, lhs, rhs }
 local Or_Pattern = Expr:clone {
     name = "Or_Pattern",
-
-    __init = function(self, ps, lhs, rhs, as, cond)
-        Expr.__init(self, ps)
-        self.lhs, self.rhs, self.cond, self.as = lhs, rhs, cond, as
-    end,
+    __init = gen_ctor(4),
 
     generate = function(self, sc, kwargs)
-        return gen_binexpr("or", self.lhs:generate(sc, kwargs),
-                                 self.rhs:generate(sc, kwargs))
+        return gen_binexpr("or", self[3]:generate(sc, kwargs),
+                                 self[4]:generate(sc, kwargs))
     end
 }
 M.Or_Pattern = Or_Pattern
 
+-- { as, cond, expr }
 local Expr_Pattern = Expr:clone {
     name = "Expr_Pattern",
-
-    __init = function(self, ps, expr, as, cond)
-        Expr.__init(self, ps)
-        self.expr, self.cond, self.as = expr, cond, as
-    end,
+    __init = gen_ctor(3),
 
     generate = function(self, sc, kwargs)
-        return gen_binexpr("==", self.expr:generate(sc, {}), kwargs.expr)
+        return gen_binexpr("==", self[3]:generate(sc, {}), kwargs.expr)
     end
 }
 M.Expr_Pattern = Expr_Pattern
 
+-- { as, cond, var }
 local Variable_Pattern = Expr:clone {
     name = "Variable_Pattern",
-
-    __init = function(self, ps, var, as, cond)
-        Expr.__init(self, ps)
-        self.var, self.cond, self.as = var, cond, as
-    end,
+    __init = gen_ctor(3),
 
     generate = function(self, sc, kwargs)
+        local var = self[3]
         if kwargs.decl then
-            sc:push(gen_local(self.var))
+            sc:push(gen_local(var))
             return nil
         elseif kwargs.no_local then
-            sc:push(gen_ass(self.var, kwargs.expr))
+            sc:push(gen_ass(var, kwargs.expr))
         else
-            sc:push(gen_local(self.var, kwargs.expr))
+            sc:push(gen_local(var, kwargs.expr))
         end
-        if kwargs.let then return self.var end
+        if kwargs.let then return var end
     end
 }
 M.Variable_Pattern = Variable_Pattern
 
+-- { as, cond }
 local Wildcard_Pattern = Expr:clone {
     name = "Wildcard_Pattern",
-
-    __init = function(self, ps, as, cond)
-        Expr.__init(self, ps)
-        self.cond, self.as = cond, as
-    end,
-
     generate = function(self, sc, kwargs)
     end
 }
 M.Wildcard_Pattern = Wildcard_Pattern
 
+-- { as, cond, { key, pattern }, { key, pattern }, ... }
 local Table_Pattern = Expr:clone {
     name = "Table_Pattern",
-
-    __init = function(self, ps, contents, as, cond)
-        Expr.__init(self, ps)
-        self.contents, self.cond, self.as = contents, cond, as
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         local tfun = get_rt_fun("type")
-        local tbl, expr = self.contents, kwargs.expr
+        local expr = kwargs.expr
         local mn, ret = 0
 
         if kwargs.decl then
-            for i = 1, #tbl do
-                tbl[i][2]:generate(sc, { decl = true })
+            for i = 1, #self do
+                self[i][2]:generate(sc, { decl = true })
             end
             return nil
         elseif kwargs.let then
             local ret = {}
-            for i = 1, #tbl do
-                local it = tbl[i]
+            for i = 1, #self do
+                local it = self[i]
                 local k, v = it[1], it[2]
                 if type(k) == "number" then
                     mn = mn + 1
@@ -1056,8 +1037,8 @@ local Table_Pattern = Expr:clone {
         end
 
         local ns = new_scope(sc, nil, true)
-        for i = 1, #tbl do
-            local it = tbl[i]
+        for i = 1, #self do
+            local it = self[i]
             local k, v = it[1], it[2]
             if type(k) == "number" then
                 mn = mn + 1
@@ -1082,27 +1063,23 @@ local Table_Pattern = Expr:clone {
 }
 M.Table_Pattern = Table_Pattern
 
+-- { as, cond, expr, { key, pattern }, { key, pattern }, ... }
 local Object_Pattern = Expr:clone {
     name = "Object_Pattern",
-
-    __init = function(self, ps, expr, contents, as, cond)
-        Expr.__init(self, ps)
-        self.expr, self.contents, self.cond, self.as = expr, contents, cond, as
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        local tbl = self.contents
         if kwargs.decl then
             local exs = {}
-            for i = 1, #tbl do
-                exs[i] = tbl[i][1]:generate(sc, {})
+            for i = 1, #self do
+                exs[i] = self[i][1]:generate(sc, {})
             end
             sc:push(gen_local(gen_seq(exs)))
             return nil
         elseif kwargs.let then
             local expr, exs = kwargs.expr, {}
-            for i = 1, #tbl do
-                local it = tbl[i]
+            for i = 1, #self do
+                local it = self[i]
                 local n, k = it[1]:generate(sc, {}), it[2]:generate(sc, {})
                 sc:push(gen_local(n, gen_index(expr, k)))
                 exs[i] = n
@@ -1112,8 +1089,8 @@ local Object_Pattern = Expr:clone {
 
         local ns = new_scope(sc, nil, true)
         local expr, nl = kwargs.expr, kwargs.no_local
-        for i = 1, #tbl do
-            local it = tbl[i]
+        for i = 1, #self do
+            local it = self[i]
             local n, k = it[1]:generate(sc, {}), it[2]:generate(sc, {})
             ns:push((nl and gen_ass or gen_local)(n, gen_index(expr, k)))
         end
@@ -1124,24 +1101,21 @@ local Object_Pattern = Expr:clone {
         sc:push(gen_if(gen_binexpr("or",
             gen_binexpr("!=", gen_call(tfun, expr), gen_str("table")),
             gen_unexpr("not", gen_call(isafun, gen_seq({ expr,
-                self.expr:generate(sc, {}) })))), ts))
+                self[3]:generate(sc, {}) })))), ts))
         sc:merge(ns)
     end
 }
 M.Object_Pattern = Object_Pattern
 
+-- { as, cond, head, tail }
 local Cons_Pattern = Expr:clone {
     name = "Cons_Pattern",
-
-    __init = function(self, ps, head, tail)
-        Expr.__init(self, ps)
-        self.head, self.tail = head, tail
-    end,
+    __init = gen_ctor(4),
 
     generate = function(self, sc, kwargs)
         local tfun = get_rt_fun("type")
         local first, rest = get_rt_fun("list_first"), get_rt_fun("list_rest")
-        local head, tail, expr = self.head, self.tail, kwargs.expr
+        local head, tail, expr = self[3], self[4], kwargs.expr
 
         if kwargs.decl then
             head:generate(sc, { decl = true })
@@ -1166,28 +1140,23 @@ local Cons_Pattern = Expr:clone {
 }
 M.Cons_Pattern = Cons_Pattern
 
+-- { { ex1, ex2, ex3, ... }, { { pt1, pt2, pt3, ... }, expr }, ... }
 local Match_Expr = Expr:clone {
     name = "Match_Expr",
-
-    __init = function(self, ps, exprlist, body)
-        Expr.__init(self, ps)
-        self.exprlist, self.body = exprlist, body
-    end,
+    __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
         local stat, rval = kwargs.statement, kwargs.return_val
-
-        local al = self.body
-        local narms = #al
+        local narms = #self
 
         -- find the longest arm
         local alen = 1
-        for i = 1, narms do
-            local l = #al[i][1]
+        for i = 2, narms do
+            local l = #self[i][1]
             if l > alen then alen = l end
         end
 
-        local el = self.exprlist
+        local el = self[1]
         local elen, exps = #el, {}
         for i = 1, elen - 1 do
             local s = unique_sym("expr")
@@ -1217,8 +1186,8 @@ local Match_Expr = Expr:clone {
         end
 
         local armlb, elb = unique_sym("lbl"), unique_sym("lbl")
-        for i = 1, narms do
-            local arm = al[i]
+        for i = 2, narms do
+            local arm = self[i]
             local pl, bd = arm[1], arm[2]
             local ptrns = {}
 
@@ -1232,14 +1201,14 @@ local Match_Expr = Expr:clone {
                 local v = pt:generate(asc, {
                     expr = expr, next_arm = armlb
                 })
-                local cond = pt.cond
+                local cond = pt[2]
                 if cond then
                     local ts = new_scope(asc)
                     ts:push(gen_goto(armlb))
                     asc:push(gen_if(gen_unexpr("not", cond:generate(asc, {})),
                         ts))
                 end
-                local as = pt.as
+                local as = pt[1]
                 if as then
                     asc:push(gen_local(as:generate(asc, {}), expr))
                 end
@@ -1565,7 +1534,7 @@ local Seq_Expr = Expr:clone {
     __init = gen_ctor(1, function(self, ps)
         ps.fnstack:pop()
         ps.lpstack:pop()
-    end)
+    end),
 
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
@@ -1876,7 +1845,7 @@ local parse_match = function(ls)
         ls:get()
     end
 
-    return Match_Expr(ls, el, body)
+    return Match_Expr(ls, el, unpack(body))
 end
 
 local parse_match_body
@@ -1993,7 +1962,7 @@ local parse_function = function(ls, obj)
                 if n == "..." then break end
                 el[i] = Symbol_Expr(nil, n)
             end
-            body = Match_Expr(ls, el, parse_match_body(ls))
+            body = Match_Expr(ls, el, unpack(parse_match_body(ls)))
             assert_tok(ls, "}")
             ls:get()
         else
@@ -2008,8 +1977,8 @@ local parse_function = function(ls, obj)
                     Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                         fnexpr)
             else
-                return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
-                    { fnexpr })
+                return Let_Expr(ls, ltype,
+                    { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
             end
         end
         return fnexpr
@@ -2028,7 +1997,7 @@ local parse_function = function(ls, obj)
             el[i] = Symbol_Expr(nil, n)
         end
         fnexpr = Function_Expr(ls, ids, defs,
-            Match_Expr(ls, el, parse_match_body(ls)))
+            Match_Expr(ls, el, unpack(parse_match_body(ls))))
     else
         fnexpr = Function_Expr(ls, ids, defs, parse_expr(ls))
     end
@@ -2041,8 +2010,8 @@ local parse_function = function(ls, obj)
                 Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                     fnexpr)
         else
-            return Let_Expr(ls, ltype, { Variable_Pattern(ls, name) },
-                { fnexpr })
+            return Let_Expr(ls, ltype,
+                { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
         end
     end
     return fnexpr
@@ -2249,14 +2218,14 @@ local parse_table_pattern = function(ls, let)
 
     if tok.name == "]" then
         ls:get()
-        return Table_Pattern(ls, {}, parse_as(ls, let), parse_when(ls, let))
+        return Table_Pattern(ls, parse_as(ls, let), parse_when(ls, let), {})
     end
 
     local tbl = parse_compound_pattern(ls, let)
     assert_tok(ls, "]")
     ls:get()
 
-    return Table_Pattern(ls, tbl, parse_as(ls, let), parse_when(ls, let))
+    return Table_Pattern(ls, parse_as(ls, let), parse_when(ls, let), tbl)
 end
 
 local parse_object_pattern = function(ls)
@@ -2293,11 +2262,11 @@ parse_pattern = function(ls, let)
             exp = parse_expr(ls)
             if tok.name == "(" then
                 ls:get()
-                local tbl = parse_compound_pattern(ls, let)
+                local tbl = parse_object_pattern(ls)
                 assert_tok(ls, ")")
                 ls:get()
-                return Object_Pattern(ls, exp, tbl,
-                    parse_as(ls), parse_when(ls))
+                return Object_Pattern(ls, parse_as(ls), parse_when(ls),
+                    exp, tbl)
             end
         else
             push_curline(ls)
@@ -2314,7 +2283,7 @@ parse_pattern = function(ls, let)
             end
             exp = Value_Expr(ls, v)
         end
-        return Expr_Pattern(ls, exp, parse_as(ls), parse_when(ls))
+        return Expr_Pattern(ls, parse_as(ls), parse_when(ls), exp)
     elseif tn == "<ident>" then
         push_curline(ls)
         local v = tok.value
@@ -2327,11 +2296,11 @@ parse_pattern = function(ls, let)
             local tbl = (tok.name == ")") and {} or parse_object_pattern(ls)
             assert_tok(ls, ")")
             ls:get()
-            return Object_Pattern(ls, Symbol_Expr(nil, v), tbl,
-                parse_as(ls), parse_when(ls))
+            return Object_Pattern(ls, parse_as(ls), parse_when(ls),
+                Symbol_Expr(nil, v), tbl)
         else
-            return Variable_Pattern(ls, v, parse_as(ls, let),
-                parse_when(ls, let))
+            return Variable_Pattern(ls, parse_as(ls, let),
+                parse_when(ls, let), v)
         end
     elseif tn == "[" then
         return parse_table_pattern(ls, let)
@@ -2374,7 +2343,7 @@ parse_patternprec = function(ls, mp)
         ls:get()
         local p1, p2 = t[1], t[2]
         local rhs = parse_patternprec(ls, p1 > p2 and p1 or p2)
-        lhs = t[3](ls, lhs, rhs)
+        lhs = t[3](ls, parse_as(ls), parse_when(ls), lhs, rhs)
         push_curline(ls)
     end
     for i = 1, #curr - len do curr:pop() end
@@ -2430,7 +2399,7 @@ local parse_match = function(ls)
         ls:get()
     end
 
-    return Match_Expr(ls, el, body)
+    return Match_Expr(ls, el, unpack(body))
 end
 
 local parse_while = function(ls)
