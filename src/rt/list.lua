@@ -60,7 +60,11 @@ M.__vx_list_first = function(list)
     return list[1]
 end
 M.__vx_list_rest = function(list)
-    return (getmt(list) == List_MT) and list[2] or { unpack(list, 2) }
+    if getmt(list) == List_MT then
+        return list[2]
+    else
+        return { unpack(list, 2) }
+    end
 end
 M.__vx_list_cons = function(head, tail)
     return setmt({ head, tail }, List_MT)

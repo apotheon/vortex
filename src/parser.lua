@@ -641,10 +641,10 @@ local Object_Expr = Expr:clone {
         local syms, len = {}, #pars
         for i = 1, len do
             if i == len then
-                syms[i] = self[i]:generate(sc, {})
+                syms[i] = pars[i]:generate(sc, {})
             else
                 local sym = unique_sym("parent")
-                sc:push(gen_local(sym, self[i]:generate(sc, {})))
+                sc:push(gen_local(sym, pars[i]:generate(sc, {})))
                 syms[i] = sym
             end
         end
@@ -700,8 +700,8 @@ local New_Expr = Expr:clone {
         sc:push(gen_local(sym, self[1]:generate(sc, {})))
 
         local len, t = #self, { sym }
-        for i = 1, len do
-            t[i + 1] = gen_evalorder(self[i], sc, "ctor", {}, i == len)
+        for i = 2, len do
+            t[i] = gen_evalorder(self[i], sc, "ctor", {}, i == len)
         end
         return gen_call(fun, gen_seq(t))
     end
@@ -1071,7 +1071,7 @@ local Object_Pattern = Expr:clone {
     generate = function(self, sc, kwargs)
         if kwargs.decl then
             local exs = {}
-            for i = 1, #self do
+            for i = 4, #self do
                 exs[i] = self[i][1]:generate(sc, {})
             end
             sc:push(gen_local(gen_seq(exs)))
@@ -1089,7 +1089,7 @@ local Object_Pattern = Expr:clone {
 
         local ns = new_scope(sc, nil, true)
         local expr, nl = kwargs.expr, kwargs.no_local
-        for i = 1, #self do
+        for i = 4, #self do
             local it = self[i]
             local n, k = it[1]:generate(sc, {}), it[2]:generate(sc, {})
             ns:push((nl and gen_ass or gen_local)(n, gen_index(expr, k)))
@@ -2147,6 +2147,7 @@ local parse_when = function(ls, let)
         ls:get()
         return parse_expr(ls)
     end
+    return false
 end
 
 local parse_as = function(ls, let)
@@ -2159,6 +2160,7 @@ local parse_as = function(ls, let)
         ls:get()
         return Symbol_Expr(nil, v)
     end
+    return false
 end
 
 local parse_if = function(ls)
@@ -2266,7 +2268,7 @@ parse_pattern = function(ls, let)
                 assert_tok(ls, ")")
                 ls:get()
                 return Object_Pattern(ls, parse_as(ls), parse_when(ls),
-                    exp, tbl)
+                    exp, unpack(tbl))
             end
         else
             push_curline(ls)
@@ -2297,7 +2299,7 @@ parse_pattern = function(ls, let)
             assert_tok(ls, ")")
             ls:get()
             return Object_Pattern(ls, parse_as(ls), parse_when(ls),
-                Symbol_Expr(nil, v), tbl)
+                Symbol_Expr(nil, v), unpack(tbl))
         else
             return Variable_Pattern(ls, parse_as(ls, let),
                 parse_when(ls, let), v)
@@ -2568,7 +2570,7 @@ local parse_object = function(ls)
     if tok.name == "}" then
         ls:get()
         return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs)
+            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {})
     end
 
     local tbl = {}
@@ -2596,7 +2598,8 @@ local parse_object = function(ls)
     assert_tok(ls, "}")
     ls:get()
     return Object_Expr(ls, el and el or {
-            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs, unpack(tbl))
+            Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {},
+                unpack(tbl))
 end
 
 local parse_new = function(ls)

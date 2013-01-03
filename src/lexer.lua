@@ -291,10 +291,16 @@ local readstr = function(ls, prefixes, delim, long)
             if c == "(" then
                 cy("$(", nil)
                 next_char(ls)
+                local level = 0
                 repeat
                     local name = lex(ls, tok, true)
+                    if name == "(" then
+                        level = level + 1
+                    elseif name == ")" then
+                        level = level - 1
+                    end
                     cy(name, tok.value)
-                until ls.current == ")"
+                until ls.current == ")" and level == 0
                 cy(")", nil)
                 next_char(ls)
             else
