@@ -1303,7 +1303,7 @@ local Let_Expr = Expr:clone {
         local rids = {}
         for i = 1, plen do
             rids[#rids + 1] = ptrns[i]:generate(sc, {
-                expr = syms[i], let = true, no_local = tp ~= nil
+                expr = syms[i], let = true, no_local = tp ~= "def"
             })
         end
 
@@ -1812,7 +1812,7 @@ local parse_list = function(ls)
         ls:get()
         assert_tok(ls, "]")
         ls:get()
-        return List_Expr(ls, {})
+        return List_Expr(ls)
     end
 
     local el = parse_exprlist(ls)
@@ -1821,7 +1821,7 @@ local parse_list = function(ls)
     ls:get()
     assert_tok(ls, "]")
     ls:get()
-    return List_Expr(ls, el)
+    return List_Expr(ls, unpack(el))
 end
 
 local parse_match = function(ls)
@@ -1977,7 +1977,7 @@ local parse_function = function(ls, obj)
                     Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                         fnexpr)
             else
-                return Let_Expr(ls, ltype,
+                return Let_Expr(ls, ltype or "def",
                     { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
             end
         end
@@ -2010,7 +2010,7 @@ local parse_function = function(ls, obj)
                 Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
                     fnexpr)
         else
-            return Let_Expr(ls, ltype,
+            return Let_Expr(ls, ltype or "def",
                 { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
         end
     end
@@ -2053,7 +2053,7 @@ local parse_let = function(ls)
         exprs = {}
     end
 
-    return Let_Expr(ls, ltype, ptrns, exprs)
+    return Let_Expr(ls, ltype or "def", ptrns, exprs)
 end
 
 local parse_sequence = function(ls)
