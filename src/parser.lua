@@ -328,7 +328,8 @@ local Expr = util.Object:clone {
 
     to_lua = function(self, sc, kwargs)
         local params = { serialize(self.dinfo) }
-        for k, v in pairs(self) do if not mskip[k] then
+        for i = 1, #self do
+            local v = self[i]
             if type(v) == "table" and v.to_lua then
                 params[#params + 1] = v:to_lua(sc, kwargs)
             else
@@ -340,7 +341,7 @@ local Expr = util.Object:clone {
                     end
                 end)
             end
-        end end
+        end
         local slf = get_rt_fun("parser")
         return gen_index(slf, gen_string(self.name)) .. "("
             .. concat(params, ",") .. ")"
@@ -1296,56 +1297,37 @@ local Match_Expr = Expr:clone {
 }
 M.Match_Expr = Match_Expr
 
+-- { type, { pattern1, pattern2, pattern3, ... }, { ex1, ex2, ex3, ... } }
 local Let_Expr = Expr:clone {
     name = "Let_Expr",
-
-    __init = function(self, ps, ltype, patterns, assign)
-        Expr.__init(self, ps)
-        self.type, self.patterns, self.assign = ltype, patterns, assign
-    end,
+    __init = gen_ctor(3),
 
     generate = function(self, sc, kwargs)
-        local ptrns, assign, syms = self.patterns, self.assign, {}
+        local ptrns, assign, syms = self[2], self[3], {}
         local len, plen = #assign, #ptrns
-        local tp = self.type
+        local tp = self[1]
 
         -- generate declarations
         if tp == "rec" then
             for i = 1, plen do
-                ptrns[i]:generate(sc, {
-                    decl = true,
-                    let  = true
-                })
+                ptrns[i]:generate(sc, { decl = true, let = true })
             end
         end
 
         for i = 1, len - 1 do
-            local expr = assign[i]
-            if expr:is_a(Value_Expr) then
-                syms[i] = expr:generate(sc, {})
-            else
-                local sym = unique_sym("let")
-                sc:push(gen_local(sym, expr:generate(sc, {})))
-                syms[i] = sym
-            end
+            syms[i] = gen_evalorder(assign[i], sc, "let", {})
         end
         local last = assign[len]
-        if last and last:is_multret() then
+        if last:is_multret() then
             local lseq
             for i = len, plen do
                 local sym = unique_sym("let")
                 lseq = lseq and gen_seq({ lseq, sym }) or sym
                 syms[i] = sym
             end
-            sc:push(gen_local(lseq, assign[len]:generate(sc, {})))
-        elseif last then
-            if last:is_a(Value_Expr) then
-                syms[len] = last:generate(sc, {})
-            else
-                local sym = unique_sym("let")
-                sc:push(gen_local(sym, last:generate(sc, {})))
-                syms[len] = sym
-            end
+            sc:push(gen_local(lseq, last:generate(sc, {})))
+        else
+            syms[len] = gen_evalorder(last, sc, "let", {})
         end
 
         local rids = {}
