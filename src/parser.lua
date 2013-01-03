@@ -1562,13 +1562,10 @@ M.Redo_Expr = Redo_Expr
 -- { expr }
 local Seq_Expr = Expr:clone {
     name = "Seq_Expr",
-
-    __init = function(self, ps, expr)
-        Expr.__init(self, ps)
+    __init = gen_ctor(1, function(self, ps)
         ps.fnstack:pop()
         ps.lpstack:pop()
-        self[1] = expr
-    end,
+    end)
 
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
@@ -1621,8 +1618,10 @@ local Unquote_Expr = Expr:clone {
 }
 M.Unquote_Expr = Unquote_Expr
 
+-- { { name, expr }, { name, expr }, { name, expr }, ... }
 local Enum_Expr = Expr:clone {
     name = "Enum_Expr",
+    __init = gen_ctor(),
 
     __init = function(self, ps, enum)
         Expr.__init(self, ps)
@@ -1638,9 +1637,8 @@ local Enum_Expr = Expr:clone {
             sc:push(gen_local(sym, gen_table(sc, {})))
         end
 
-        local enum = self.enum
         local isym, incr = unique_sym("enumi"), 1
-        local it = enum[1]
+        local it = self[1]
         local name, expr = it[1], it[2]
         if expr then
             sc:push(gen_local(isym, expr:generate(sc, {})))
@@ -1648,8 +1646,8 @@ local Enum_Expr = Expr:clone {
             sc:push(gen_local(isym, incr - 1))
         end
         sc:push(gen_ass(gen_index(sym, gen_string(name)), isym))
-        for i = 2, #enum do
-            local it = enum[i]
+        for i = 2, #self do
+            local it = self[i]
             local name, expr = it[1], it[2]
             if expr then
                 sc:push(gen_ass(isym, expr:generate(sc, {})))
@@ -2171,7 +2169,7 @@ local parse_enum = function(ls)
     assert_tok(ls, curly and "}" or ")")
     ls:get()
 
-    return Enum_Expr(ls, t)
+    return Enum_Expr(ls, unpack(t))
 end
 
 local parse_when = function(ls, let)
