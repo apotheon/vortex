@@ -356,9 +356,10 @@ M.Expr = Expr
 local Call_Expr
 local Value_Expr
 
-local gen_ctor = function(n)
+local gen_ctor = function(n, fun)
     return function(self, ps, ...)
         Expr.__init(self, ps)
+        if fun then fun(self, ps) end
         for i = 1, n or select("#", ...) do
             self[i] = select(i, ...)
         end
@@ -1344,14 +1345,10 @@ local Let_Expr = Expr:clone {
 }
 M.Let_Expr = Let_Expr
 
+-- { cond, body }
 local While_Expr = Expr:clone {
     name = "While_Expr",
-
-    __init = function(self, ps, cond, body)
-        Expr.__init(self, ps)
-        ps.lpstack:pop()
-        self.cond, self.body = cond, body
-    end,
+    __init = gen_ctor(2, function(self, ps) ps.lpstack:pop() end),
 
     generate = function(self, sc, kwargs)
         local bsc = new_scope(sc)
@@ -1367,11 +1364,8 @@ local While_Expr = Expr:clone {
 
         local tsc = new_scope(bsc)
         tsc:push(gen_goto(lend))
-        bsc:push(gen_if(gen_unexpr("not", self.cond:generate(bsc, {})), tsc))
-        self.body:generate(bsc, {
-            statement = true,
-            no_scope  = true
-        })
+        bsc:push(gen_if(gen_unexpr("not", self[1]:generate(bsc, {})), tsc))
+        self[2]:generate(bsc, { statement = true, no_scope = true })
         bsc:push(gen_goto(lbeg))
         bsc:push(gen_label(lend))
 
@@ -1384,14 +1378,10 @@ local While_Expr = Expr:clone {
 }
 M.While_Expr = While_Expr
 
+-- { cond, body }
 local Do_While_Expr = Expr:clone {
     name = "Do_While_Expr",
-
-    __init = function(self, ps, cond, body)
-        Expr.__init(self, ps)
-        ps.lpstack:pop()
-        self.cond, self.body = cond, body
-    end,
+    __init = gen_ctor(2, function(self, ps) ps.lpstack:pop() end),
 
     generate = function(self, sc, kwargs)
         local bsc = new_scope(sc)
@@ -1404,13 +1394,10 @@ local Do_While_Expr = Expr:clone {
             loop_end   = lend
         }
         bsc:push(gen_label(lbeg))
-        self.body:generate(bsc, {
-            statement = true,
-            no_scope  = true
-        })
+        self[2]:generate(bsc, { statement = true, no_scope = true })
         local tsc = new_scope(bsc)
         tsc:push(gen_goto(lbeg))
-        bsc:push(gen_if(self.cond:generate(bsc, {}), tsc))
+        bsc:push(gen_if(self[1]:generate(bsc, {}), tsc))
         bsc:push(gen_label(lend))
 
         sc:push(gen_block(bsc))
@@ -1422,14 +1409,10 @@ local Do_While_Expr = Expr:clone {
 }
 M.Do_While_Expr = Do_While_Expr
 
+-- { idents, exprs, body }
 local For_Expr = Expr:clone {
     name = "For_Expr",
-
-    __init = function(self, ps, idents, exprs, body)
-        Expr.__init(self, ps)
-        ps.lpstack:pop()
-        self.idents, self.exprs, self.body = idents, exprs, body
-    end,
+    __init = gen_ctor(3, function(self, ps) ps.lpstack:pop() end),
 
     generate = function(self, sc, kwargs)
         local bsc = new_scope(sc)
@@ -1446,14 +1429,14 @@ local For_Expr = Expr:clone {
         }
 
         local exps = {}
-        local el = self.exprs
+        local el = self[2]
         for i = 1, #el do
             exps[i] = el[i]:generate(bsc, {})
         end
         bsc:push(gen_local(gen_seq({ fsym, ssym, varsym }), gen_seq(exps)))
         bsc:push(gen_label(linc))
 
-        local ids = self.idents
+        local ids = self[1]
         bsc:push(gen_local(gen_seq(ids), gen_call(fsym,
             gen_seq({ ssym, varsym }))))
 
@@ -1462,10 +1445,7 @@ local For_Expr = Expr:clone {
         tsc:push(gen_goto(lend))
         bsc:push(gen_if(gen_binexpr("==", ids[1], "nil"), tsc))
         bsc:push(gen_ass(varsym, ids[1]))
-        self.body:generate(bsc, {
-            statement = true,
-            no_scope  = true
-        })
+        self[3]:generate(bsc, { statement = true, no_scope = true })
         bsc:push(gen_goto(linc))
         bsc:push(gen_label(lend))
 
@@ -1478,15 +1458,10 @@ local For_Expr = Expr:clone {
 }
 M.For_Expr = For_Expr
 
+-- { ident, first, last, step, body }
 local For_Range_Expr = Expr:clone {
     name = "For_Range_Expr",
-
-    __init = function(self, ps, ident, first, last, step, body)
-        Expr.__init(self, ps)
-        ps.lpstack:pop()
-        self.ident, self.first, self.last, self.step, self.body
-            = ident, first, last, step, body
-    end,
+    __init = gen_ctor(5, function(self, ps) ps.lpstack:pop() end),
 
     generate = function(self, sc, kwargs)
         local bsc = new_scope(sc)
@@ -1504,8 +1479,8 @@ local For_Range_Expr = Expr:clone {
             loop_end   = lend
         }
 
-        local ex1, ex2, ex3 = self.first:generate(bsc, {}),
-            self.last:generate(bsc, {}), self.step:generate(bsc, {})
+        local ex1, ex2, ex3 = self[2]:generate(bsc, {}),
+            self[3]:generate(bsc, {}), self[4]:generate(bsc, {})
 
         bsc:push(gen_local(gen_seq({ varsym, limsym, stepsym }),
             gen_seq({ gen_call(tonum, ex1),
@@ -1538,11 +1513,8 @@ local For_Range_Expr = Expr:clone {
                 gen_binexpr("<=", stepsym, "0"),
                 gen_binexpr(">=", varsym, limsym)
             ))), tsc))
-        bsc:push(gen_local(self.ident, varsym))
-        self.body:generate(bsc, {
-            statement = true,
-            no_scope  = true
-        })
+        bsc:push(gen_local(self[1], varsym))
+        self[5]:generate(bsc, { statement = true, no_scope = true })
         bsc:push(gen_label(linc))
         bsc:push(gen_ass(varsym, gen_binexpr("+", varsym, stepsym)))
         bsc:push(gen_goto(lbeg))
