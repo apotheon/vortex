@@ -2716,9 +2716,24 @@ end
 
 local parse_binexpr
 
-parse_primaryexpr = function(ls)
+parse_primaryexpr = function(ls, mult)
     local tok = ls.token
-    if tok.name == "(" then
+    local tn = tok.name
+    if tn == "(" then
+        ls:get()
+        local exp
+        if mult then
+            exp = parse_exprlist(ls)
+            if #exp == 1 then exp = exp[1] end
+        else
+            exp = parse_expr(ls)
+        end
+        if tok.name ~= ")" then
+            syntax_error(ls, "missing ')'")
+        end
+        ls:get()
+        return exp
+    elseif tn == "$(" then
         ls:get()
         local exp = parse_expr(ls)
         if tok.name ~= ")" then
@@ -2726,12 +2741,19 @@ parse_primaryexpr = function(ls)
         end
         ls:get()
         return exp
-    elseif tok.name == "<ident>" then
+    elseif tn == "$" then
+        push_curline(ls)
+        ls:get()
+        assert_tok(ls, "<ident>")
+        local v = tok.value
+        ls:get()
+        return Symbol_Expr(ls, v)
+    elseif tn == "<ident>" then
         push_curline(ls)
         local v = tok.value
         ls:get()
         return Symbol_Expr(ls, v)
-    elseif tok.name == "@" then
+    elseif tn == "@" then
         push_curline(ls)
         push_curline(ls)
         ls:get()
@@ -2746,10 +2768,13 @@ parse_primaryexpr = function(ls)
     end
 end
 
-local parse_suffixedexpr = function(ls)
+local parse_suffixedexpr = function(ls, mult)
     local tok = ls.token
 
-    local exp = parse_primaryexpr(ls)
+    local exp = parse_primaryexpr(ls, mult)
+    if mult and not exp.name then
+        return exp
+    end
     while true do
         if tok.name == "." or tok.name == ":" then
             local mcall = (tok.name == ":")
@@ -2796,33 +2821,13 @@ local parse_suffixedexpr = function(ls)
                 ls:get()
             end
             exp = Call_Expr(ls, false, exp, unpack(el))
-        elseif tok.name == "unless" then
-            push_curline(ls)
-            ls:get()
-            local cond = parse_expr(ls)
-            local fexpr
-            if tok.name == "else" then
-                ls:get()
-                fexpr = parse_expr(ls)
-            end
-            exp = If_Expr(ls, Unary_Expr(nil, "not", cond), exp, fexpr)
-        elseif tok.name == "when" then
-            push_curline(ls)
-            ls:get()
-            local cond = parse_expr(ls)
-            local fexpr
-            if tok.name == "else" then
-                ls:get()
-                fexpr = parse_expr(ls)
-            end
-            exp = If_Expr(ls, cond, exp, fexpr)
         else
             return exp
         end
     end
 end
 
-local parse_simpleexpr = function(ls)
+local parse_simpleexpr = function(ls, mult)
     local tok = ls.token
     local name = tok.name
 
@@ -2949,7 +2954,41 @@ local parse_simpleexpr = function(ls)
         end
         return Value_Expr(ls, v)
     else
-        return parse_suffixedexpr(ls)
+        return parse_suffixedexpr(ls, mult)
+    end
+end
+
+local parse_condexpr = function(ls, mult)
+    local tok = ls.token
+
+    local exp = parse_simpleexpr(ls, mult)
+    if mult and not exp.name then
+        return exp
+    end
+    while true do
+        if tok.name == "unless" then
+            push_curline(ls)
+            ls:get()
+            local cond = parse_expr(ls)
+            local fexpr
+            if tok.name == "else" then
+                ls:get()
+                fexpr = parse_expr(ls)
+            end
+            exp = If_Expr(ls, Unary_Expr(nil, "not", cond), exp, fexpr)
+        elseif tok.name == "when" then
+            push_curline(ls)
+            ls:get()
+            local cond = parse_expr(ls)
+            local fexpr
+            if tok.name == "else" then
+                ls:get()
+                fexpr = parse_expr(ls)
+            end
+            exp = If_Expr(ls, cond, exp, fexpr)
+        else
+            return exp
+        end
     end
 end
 
@@ -2960,21 +2999,7 @@ parse_binexpr = function(ls, mp)
     push_curline(ls)
     mp = mp or 1
 
-    local lhs
-    if tok.name == "(" then
-        ls:get()
-        local el = parse_exprlist(ls)
-        if #el == 1 then
-            ls.ndstack:pop()
-            lhs = el[1]
-        else
-            lhs = el
-        end
-        assert_tok(ls, ")")
-        ls:get()
-    else
-        lhs = parse_simpleexpr(ls)
-    end
+    local lhs = parse_condexpr(ls, true)
 
     local opn = tok.name
     local aop = Ass_Ops[opn]
@@ -3024,21 +3049,6 @@ parse_binexpr = function(ls, mp)
 end
 
 parse_expr = function(ls)
-    local tok = ls.token
-    if tok.name == "$" then
-        ls:get()
-        assert_tok(ls, "<ident>")
-        push_curline(ls)
-        local v = tok.value
-        ls:get()
-        return Symbol_Expr(ls, v)
-    elseif tok.name == "$(" then
-        ls:get()
-        local expr = parse_binexpr(ls)
-        assert_tok(ls, ")")
-        ls:get()
-        return expr
-    end
     return parse_binexpr(ls)
 end
 
