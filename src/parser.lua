@@ -990,8 +990,8 @@ local And_Pattern = Expr:clone {
     __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
-        return gen_binexpr("and", self[1]:generate(sc, kwargs),
-                                  self[2]:generate(sc, kwargs))
+        return gen_binexpr("and", self[1]:generate(sc, kwargs) or "nil",
+                                  self[2]:generate(sc, kwargs) or "nil")
     end
 }
 M.And_Pattern = And_Pattern
@@ -1002,8 +1002,8 @@ local Or_Pattern = Expr:clone {
     __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
-        return gen_binexpr("or", self[1]:generate(sc, kwargs),
-                                 self[2]:generate(sc, kwargs))
+        return gen_binexpr("or", self[1]:generate(sc, kwargs) or "nil",
+                                 self[2]:generate(sc, kwargs) or "nil")
     end
 }
 M.Or_Pattern = Or_Pattern
@@ -1165,10 +1165,12 @@ local Cons_Pattern = Expr:clone {
             tail:generate(sc, { decl = true })
             return nil
         elseif kwargs.let then
-            local h  = head:generate(sc, { let = true,
-                expr = gen_call(first, expr) })
-            local t  = tail:generate(sc, { let = true,
-                expr = gen_call(rest, expr) })
+            local sym = unique_sym("cons")
+            local hsym, tsym = sym .. "_h", sym .. "_t"
+            sc:push(gen_local(hsym, gen_call(first, expr)))
+            sc:push(gen_local(tsym, gen_call(rest, expr)))
+            local h  = head:generate(sc, { let = true, expr = hsym })
+            local t  = tail:generate(sc, { let = true, expr = tsym })
 
             return gen_seq({ h, t })
         end
@@ -1177,8 +1179,13 @@ local Cons_Pattern = Expr:clone {
         ts:push(gen_goto(kwargs.next_arm))
         sc:push(gen_if(gen_binexpr("!=", gen_call(tfun, expr),
             gen_str("table")), ts))
-        head:generate(sc, { expr = gen_call(first, expr) })
-        tail:generate(sc, { expr = gen_call(rest,  expr) })
+        local narm = kwargs.next_arm
+        local sym = unique_sym("cons")
+        local hsym, tsym = sym .. "_h", sym .. "_t"
+        sc:push(gen_local(hsym, gen_call(first, expr)))
+        sc:push(gen_local(tsym, gen_call(rest, expr)))
+        head:generate(sc, { expr = hsym, next_arm = narm })
+        tail:generate(sc, { expr = tsym, next_arm = narm })
     end
 }
 M.Cons_Pattern = Cons_Pattern
@@ -2313,51 +2320,73 @@ local parse_object_pattern = function(ls)
     return tbl
 end
 
+-- cons pattern is right associative
+local Pattern_Ops = {
+    ["or"] = { 1, 1, Or_Pattern }, ["and"] = { 2, 2, And_Pattern },
+    ["::"] = { 4, 3, Cons_Pattern }
+}
+
+local parse_suffixedpattern
 local parse_primarypattern = function(ls, let)
     local tok = ls.token
-    local tn  = tok.name
-    if (tn == "$" or tn == "$(" or tn == "<string>" or tn == "<number>"
-    or  tn == "true" or tn == "false" or tn == "nil") and not let then
+    local tn = tok.name
+    if tn == "(" then
+        ls:get()
+        local pt = parse_pattern(ls, let)
+        if tok.name ~= ")" then
+            syntax_error(ls, "missing ')'")
+        end
+        ls:get()
+        -- cons pattern is a binary pattern, but it can have when/unless/as
+        -- too, so handle it here (only when in parens, we don't want any
+        -- ambiguity)
+        if pt:is_a(Cons_Pattern) then
+            pt = parse_suffixedpattern(ls, let, pt)
+        end
+        return pt
+    elseif tn == "<string>" or tn == "<number>" or tn == "true"
+    or tn == "false" or tn == "nil" and not let then
         push_curline(ls)
-        local exp
-        if tn == "$" or tn == "$(" then
-            exp = parse_expr(ls)
-            if tok.name == "(" then
-                ls:get()
-                local tbl = parse_object_pattern(ls)
-                assert_tok(ls, ")")
-                ls:get()
-                return Object_Pattern(ls, exp, unpack(tbl))
-            end
-        else
-            push_curline(ls)
-            local v = tok.value or tn
+        push_curline(ls)
+        local v = tok.value or tn
+        ls:get()
+        if tn == "<number>" then
+            v = tonumber(v)
+        elseif tn == "true" then
+            v = true
+        elseif tn == "false" then
+            v = false
+        elseif tn == "nil" then
+            v = nil
+        end
+        return Expr_Pattern(ls, Value_Expr(ls, v))
+    elseif tn == "$" or tn == "$(" and not let then
+        push_curline(ls)
+        local exp = parse_expr(ls)
+        if tok.name == "(" then
             ls:get()
-            if tn == "<number>" then
-                v = tonumber(v)
-            elseif tn == "true" then
-                v = true
-            elseif tn == "false" then
-                v = false
-            elseif tn == "nil" then
-                v = nil
-            end
-            exp = Value_Expr(ls, v)
+            local tbl = (tok.name == ")") and {} or parse_object_pattern(ls)
+            assert_tok(ls, ")")
+            ls:get()
+            return Object_Pattern(ls, exp, unpack(tbl))
         end
         return Expr_Pattern(ls, exp)
     elseif tn == "<ident>" then
         push_curline(ls)
+        push_curline(ls)
         local v = tok.value
         ls:get()
         if v == "_" then
+            ls.ndstack:pop()
             return Wildcard_Pattern(ls)
         elseif tok.name == "(" then
             ls:get()
             local tbl = (tok.name == ")") and {} or parse_object_pattern(ls)
             assert_tok(ls, ")")
             ls:get()
-            return Object_Pattern(ls, Symbol_Expr(nil, v), unpack(tbl))
+            return Object_Pattern(ls, Symbol_Expr(ls, v), unpack(tbl))
         else
+            ls.ndstack:pop()
             return Variable_Pattern(ls, v)
         end
     elseif tn == "[" then
@@ -2367,9 +2396,9 @@ local parse_primarypattern = function(ls, let)
     end
 end
 
-parse_pattern = function(ls, let)
+parse_suffixedpattern = function(ls, let, pt)
     local tok = ls.token
-    local pat = parse_primarypattern(ls, let)
+    local pat = pt or parse_primarypattern(ls, let)
     local hasas, haswhen, hasunless = false, false, false
     while true do
         if tok.name == "when" and not haswhen and not let then
@@ -2393,40 +2422,21 @@ parse_pattern = function(ls, let)
     end
 end
 
--- cons pattern is right associative
-local Pattern_Ops = {
-    ["or"] = { 1, 1, Or_Pattern }, ["and"] = { 2, 2, And_Pattern },
-    ["::"] = { 4, 3, Cons_Pattern }
-}
-
 local parse_patternprec
-
-local parse_subpattern = function(ls)
-    local tok = ls.token.name
-    if tok == "(" then
-        ls:get()
-        local v = parse_patternprec(ls)
-        if ls.token.name ~= ")" then syntax_error(ls, "missing ')'") end
-        ls:get()
-        return v
-    else
-        return parse_pattern(ls)
-    end
-end
-
-parse_patternprec = function(ls, mp)
+parse_patternprec = function(ls, mp, let)
     local curr = ls.ndstack
     local len = #curr
     push_curline(ls)
     mp = mp or 1
-    local lhs = parse_subpattern(ls)
+    local lhs = parse_suffixedpattern(ls, let)
     while true do
         local cur = ls.token.name
+        if let and cur ~= "::" then break end
         local t = Pattern_Ops[cur]
         if not cur or not t or t[1] < mp then break end
         ls:get()
         local p1, p2 = t[1], t[2]
-        local rhs = parse_patternprec(ls, p1 > p2 and p1 or p2)
+        local rhs = parse_patternprec(ls, p1 > p2 and p1 or p2, let)
         lhs = t[3](ls, lhs, rhs)
         push_curline(ls)
     end
@@ -2434,11 +2444,14 @@ parse_patternprec = function(ls, mp)
     return lhs
 end
 
+parse_pattern = function(ls, let)
+    return parse_patternprec(ls, nil, let)
+end
+
 parse_pattern_list = function(ls, let)
     local tok, ptrns = ls.token, {}
     repeat
-        ptrns[#ptrns + 1] = let and parse_pattern(ls, let)
-            or parse_patternprec(ls)
+        ptrns[#ptrns + 1] = parse_pattern(ls, let)
     until tok.name ~= "," or not ls:get()
     return ptrns
 end
