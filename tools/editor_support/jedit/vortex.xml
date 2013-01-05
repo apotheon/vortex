@@ -164,9 +164,11 @@
             <KEYWORD1>return</KEYWORD1>
             <KEYWORD1>seq</KEYWORD1>
             <KEYWORD3>true</KEYWORD3>
+            <KEYWORD1>unless</KEYWORD1>
             <KEYWORD1>unquote</KEYWORD1>
             <KEYWORD1>when</KEYWORD1>
             <KEYWORD1>while</KEYWORD1>
+            <KEYWORD1>with</KEYWORD1>
             <KEYWORD1>yield</KEYWORD1>
 
             <!-- special names and builtins -->

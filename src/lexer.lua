@@ -53,9 +53,11 @@ local keywords = {
     ["return" ] = true,
     ["seq"    ] = true,
     ["true"   ] = true,
+    ["unless" ] = true,
     ["unquote"] = true,
     ["when"   ] = true,
     ["while"  ] = true,
+    ["with"   ] = true,
     ["yield"  ] = true,
 
     ["__FILE__"] = true,
