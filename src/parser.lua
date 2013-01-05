@@ -2753,6 +2753,53 @@ parse_primaryexpr = function(ls, mult)
         local v = tok.value
         ls:get()
         return Symbol_Expr(ls, v)
+    elseif tn == "<number>" then
+        push_curline(ls)
+        local v = tok.value
+        ls:get()
+        return Value_Expr(ls, tonumber(v))
+    elseif tn == "<begstring>" then
+        push_curline(ls)
+        ls:get() -- consume the "start" token
+
+        local exprs, value = { true }
+        while true do
+            -- potential string end? but we have to assume implicit
+            -- constant concatenation
+            local tn, tv = tok.name, tok.value
+            if tn == "<endstring>" then
+                ls:get()
+                if tok.name ~= "<begstring>" then
+                    break
+                end
+                -- consume next "start" token
+                ls:get()
+            elseif tn == "$" or tn == "$(" then
+                exprs[#exprs + 1] = parse_expr(ls)
+                value = value and (value .. "%s") or "%s"
+            else
+                value = value and (value .. tv) or tv
+                ls:get()
+            end
+        end
+
+        if #exprs > 1 then
+            push_curline(ls)
+            exprs[1] = Value_Expr(ls, value)
+            return Call_Expr(ls, false, Symbol_Expr(nil,
+                lazy_rt_fun("str_fmt")), unpack(exprs))
+        end
+        return Value_Expr(ls, value)
+    elseif tn == "nil" or tn == "true" or tn == "false" then
+        push_curline(ls)
+        ls:get()
+        local v
+        if name == "true" then
+            v = true
+        elseif name == "false" then
+            v = false
+        end
+        return Value_Expr(ls, v)
     elseif tn == "@" then
         push_curline(ls)
         push_curline(ls)
@@ -2906,53 +2953,6 @@ local parse_simpleexpr = function(ls, mult)
         push_curline(ls)
         ls:get()
         return Unary_Expr(ls, name, parse_binexpr(ls, Unary_Ops[name]))
-    elseif name == "<number>" then
-        push_curline(ls)
-        local v = tok.value
-        ls:get()
-        return Value_Expr(ls, tonumber(v))
-    elseif name == "<begstring>" then
-        push_curline(ls)
-        ls:get() -- consume the "start" token
-
-        local exprs, value = { true }
-        while true do
-            -- potential string end? but we have to assume implicit
-            -- constant concatenation
-            local tn, tv = tok.name, tok.value
-            if tn == "<endstring>" then
-                ls:get()
-                if tok.name ~= "<begstring>" then
-                    break
-                end
-                -- consume next "start" token
-                ls:get()
-            elseif tn == "$" or tn == "$(" then
-                exprs[#exprs + 1] = parse_expr(ls)
-                value = value and (value .. "%s") or "%s"
-            else
-                value = value and (value .. tv) or tv
-                ls:get()
-            end
-        end
-
-        if #exprs > 1 then
-            push_curline(ls)
-            exprs[1] = Value_Expr(ls, value)
-            return Call_Expr(ls, false, Symbol_Expr(nil,
-                lazy_rt_fun("str_fmt")), unpack(exprs))
-        end
-        return Value_Expr(ls, value)
-    elseif name == "nil" or name == "true" or name == "false" then
-        push_curline(ls)
-        ls:get()
-        local v
-        if name == "true" then
-            v = true
-        elseif name == "false" then
-            v = false
-        end
-        return Value_Expr(ls, v)
     else
         return parse_suffixedexpr(ls, mult)
     end
