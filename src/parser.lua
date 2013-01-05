@@ -954,10 +954,11 @@ local When_Pattern = Expr:clone {
         return v
     end
 }
+M.When_Pattern = When_Pattern
 
 -- { cond, pattern }
 local Unless_Pattern = Expr:clone {
-    name = "When_Pattern",
+    name = "Unless_Pattern",
     __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
@@ -968,6 +969,7 @@ local Unless_Pattern = Expr:clone {
         return v
     end
 }
+M.Unless_Pattern = Unless_Pattern
 
 -- { name, pattern }
 local As_Pattern = Expr:clone {
@@ -980,6 +982,7 @@ local As_Pattern = Expr:clone {
         return v
     end
 }
+M.As_Pattern = As_Pattern
 
 -- { lhs, rhs }
 local And_Pattern = Expr:clone {
@@ -2780,8 +2783,26 @@ local parse_suffixedexpr = function(ls)
                 ls:get()
             end
             exp = Call_Expr(ls, false, exp, unpack(el))
-        --elseif tok.name == "unless" then
-        --elseif tok.name == "when" then
+        elseif tok.name == "unless" then
+            push_curline(ls)
+            ls:get()
+            local cond = parse_expr(ls)
+            local fexpr
+            if tok.name == "else" then
+                ls:get()
+                fexpr = parse_expr(ls)
+            end
+            exp = If_Expr(ls, Unary_Expr(nil, "not", cond), exp, fexpr)
+        elseif tok.name == "when" then
+            push_curline(ls)
+            ls:get()
+            local cond = parse_expr(ls)
+            local fexpr
+            if tok.name == "else" then
+                ls:get()
+                fexpr = parse_expr(ls)
+            end
+            exp = If_Expr(ls, cond, exp, fexpr)
         else
             return exp
         end
