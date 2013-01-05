@@ -1342,6 +1342,45 @@ local Let_Expr = Expr:clone {
 }
 M.Let_Expr = Let_Expr
 
+-- { type, { pt1, pt2, pt3, ... }, { ex1, ex2, ex3, ... }, body }
+local With_Expr = Expr:clone {
+    name = "With_Expr",
+    __init = gen_ctor(4),
+
+    generate = function(self, sc, kwargs)
+        local scope = new_scope(sc)
+        Let_Expr.generate(self, scope, {})
+
+        local stat, rval = kwargs.statement, kwargs.return_val
+        local body = self[4]
+
+        local bscoped = body:is_scoped()
+        local val = body:generate(scope, {
+            no_scope = true, statement = stat, return_val = rval
+        })
+
+        if stat or rval then
+            scope:push((rval and not bscoped) and gen_ret(val) or val)
+            sc:push(gen_block(scope))
+        else
+            local sym = unique_sym("with")
+            sc:push(gen_local(sym))
+            if self:is_multret() then
+                local fsc = new_scope(scope)
+                fsc:push(gen_ret(val))
+                scope:push(gen_ass(sym, gen_fun("", fsc)))
+                sc:push(gen_block(scope))
+                return gen_call(sym, "")
+            else
+                scope:push(gen_ass(sym, val))
+                sc:push(gen_block(scope))
+                return sym
+            end
+        end
+    end
+}
+M.With_Expr = With_Expr
+
 -- { cond, body }
 local While_Expr = Expr:clone {
     name = "While_Expr",
@@ -2006,7 +2045,7 @@ local parse_function = function(ls, obj)
                         fnexpr)
             else
                 return Let_Expr(ls, ltype or "def",
-                    { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
+                    { Variable_Pattern(ls, name) }, { fnexpr })
             end
         end
         return fnexpr
@@ -2039,13 +2078,13 @@ local parse_function = function(ls, obj)
                     fnexpr)
         else
             return Let_Expr(ls, ltype or "def",
-                { Variable_Pattern(nil, nil, ls, name) }, { fnexpr })
+                { Variable_Pattern(ls, name) }, { fnexpr })
         end
     end
     return fnexpr
 end
 
-local parse_let = function(ls)
+local parse_let_with = function(ls, with)
     local tok = ls.token
     push_curline(ls)
     ls:get()
@@ -2079,6 +2118,18 @@ local parse_let = function(ls)
         end
     else
         exprs = {}
+    end
+
+    if with then
+        local body
+        if tok.name == "{" then
+            body = parse_block(ls)
+        else
+            assert_tok(ls, "->")
+            ls:get()
+            body = parse_expr(ls)
+        end
+        return With_Expr(ls, ltype or "def", ptrns, exprs, body)
     end
 
     return Let_Expr(ls, ltype or "def", ptrns, exprs)
@@ -2744,7 +2795,9 @@ local parse_simpleexpr = function(ls)
     if name == "fn" then
         return parse_function(ls)
     elseif name == "let" then
-        return parse_let(ls)
+        return parse_let_with(ls)
+    elseif name == "with" then
+        return parse_let_with(ls, true)
     elseif name == "seq" then
         return parse_sequence(ls)
     elseif name == "quote" then
