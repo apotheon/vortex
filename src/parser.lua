@@ -2800,9 +2800,9 @@ parse_primaryexpr = function(ls, mult)
         push_curline(ls)
         ls:get()
         local v
-        if name == "true" then
+        if tn == "true" then
             v = true
-        elseif name == "false" then
+        elseif tn == "false" then
             v = false
         end
         return Value_Expr(ls, v)
