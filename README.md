@@ -16,25 +16,29 @@ syntax and semantics.
 
 It primarily draws inspiration from Lua, Scheme, OCaml/F# and Rust.
 
-It can be integrated into any project that already uses Lua very easily
-(through provided API). A custom standard library is to be written and
-Vortex scripts will live in their own environment not polluting the Lua
-global namespace. Interaction between Lua and Vortex is possible using
-a special table.
+Thanks to its Lua base, you can easily embed Vortex in your project. Every
+Vortex script lives within its own environment, no outer modifications are
+made. Vortex uses Lua's standard library. New modules are to be written
+though, so the standard library will be extended.
 
-The language uses a curly braced, free form syntax with optional semicolons.
-Everything is an expression; there are no pure statements (althrough some
-of the expressions are meant to be used in statement forms).
+Any Lua module can be accessed through a special table. Vortex's module
+system will use custom routines for this, handling loading of macros and
+so on, which will be incompatible with Lua's. If you want to use Lua
+modules, use Lua functions.
+
+The language uses a curly braced, free form syntax. That allows very easy
+implementation, but creates a few constraints. Everything is an expression;
+there are no statements (althrough some of the expressions are meant to be
+used as statements).
 
 A quick list of features:
 
 - Most of Lua's features including table magic
 - Lua-like semantics
 - Convenient functions with easy default argument values
-- Implicit and explicit returns
 - Blocks are expressions
 - Coroutines and generators
-- Lightweight objects
+- Lightweight, multiple-inheritance, delegative, prototypal object system
 - AST macros
 - Extensions of syntax and semantics
 - Pattern matching
@@ -44,18 +48,23 @@ A quick list of features:
 The performance is comparable to handwritten Lua.
 
 ## Status
+
 ### Lexer
+
 The lexer is pretty much complete when it comes to language's current design.
 More keywords will be added and operators might change.
+
 ### Parser
+
 - Parse chunks of code. __[yes]__
 - Parse blocks. __[yes]__
 - Parse basic expressions. __[yes]__
-- Parse suffix expressions. [partial]
+- Parse suffix expressions. __[yes]__
 - Parse operator precedences. __[yes]__
 - Parse functions. __[yes]__
 - Parse coroutines and generators. [no]
 - Parse let expression. __[yes]__
+- Parse with expression. __[yes]__
 - Parse patterns. __[yes]__
 - Parse match expression. __[yes]__
 - Parse conditionals. __[yes]__
@@ -63,20 +72,30 @@ More keywords will be added and operators might change.
 - Parse do-while loops. __[yes]__
 - Parse numeric for loops. __[yes]__
 - Parse generic for loops. __[yes]__
-- Parse quotes. __[yes]__
+- Parse quotes and unquotes. __[yes]__
 - Parse tables. __[yes]__
 - Parse sequences. __[yes]__
-- Parse lists. [no]
-- Parse additional table operations. [no]
-- Parse objects. [no]
+- Parse lists. __[yes]__
+- Parse postfix conditionals. __[yes]__
+- Parse enumerations. __[yes]__
+- Parse additional table operations. __[yes]__
+- Parse objects. __[yes]__
+- Parse interpolated strings and nested expressions. __[yes]__
 - Parse macros. [no]
+
 ### Macro processor
+
 No work on macros has been done yet.
+
 ### Codegen
+
 ### Runtime
+
 ### Standard library
 
-More descriptive table coming later.
+Vortex uses Lua's standard library. It will be extended with custom modules
+and some will be redesigned, but the core modules (string, math, ...) stay
+(sometimes with extensions).
 
 ## Example code
 
