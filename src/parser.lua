@@ -2733,6 +2733,12 @@ parse_primaryexpr = function(ls, mult)
         end
         ls:get()
         return exp
+    elseif tn == "[" then
+        if ls:lookahead() == ":" then
+            return parse_list(ls)
+        else
+            return parse_table(ls)
+        end
     elseif tn == "$(" then
         ls:get()
         local exp = parse_expr(ls)
@@ -2929,12 +2935,6 @@ local parse_simpleexpr = function(ls, mult)
         return parse_new(ls)
     elseif name == "{" then
         return parse_block(ls)
-    elseif name == "[" then
-        if ls:lookahead() == ":" then
-            return parse_list(ls)
-        else
-            return parse_table(ls)
-        end
     elseif name == "__FILE__" then
         push_curline(ls)
         ls:get()
