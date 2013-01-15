@@ -56,13 +56,14 @@ static lua_Hook sigh = NULL;
 static int sign = 0, hmask = 0, hcnt = 0;
 
 static void vx_sighook(lua_State *L, lua_Debug *ar) {
+    lua_sethook(L, sigh, hmask, hcnt);
     lua_pushstring(L, VX_SIG);
     lua_gettable(L, LUA_REGISTRYINDEX);
     lua_pushinteger(L, sign);
     lua_gettable(L, -2);
-    lua_call(L, 0, 0);
+    lua_pushinteger(L, sign);
+    lua_call(L, 1, 0);
     lua_pop(L, 1);
-    lua_sethook(L, sigh, hmask, hcnt);
 }
 
 static void vx_sighandler(int sig) {
