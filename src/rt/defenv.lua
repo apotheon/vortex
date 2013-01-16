@@ -86,3 +86,5 @@ env._L       = _G
 env._G       = env
 env._R       = M
 env._VERSION = "Vortex 0.1"
+
+envset(7, env)

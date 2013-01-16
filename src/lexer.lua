@@ -54,6 +54,7 @@ local keywords = {
     ["result" ] = true,
     ["return" ] = true,
     ["seq"    ] = true,
+    ["set"    ] = true,
     ["true"   ] = true,
     ["unless" ] = true,
     ["unquote"] = true,

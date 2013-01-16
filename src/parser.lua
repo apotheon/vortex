@@ -143,6 +143,9 @@ local gen_str = function(str)
     for x in str:gmatch("%](=*)%]") do
         used[#x] = true
     end
+    if str:sub(#str) == "]" then
+        used[0] = true
+    end
     local lvl = 0
     while true do
         if used[lvl] then lvl = lvl + 1 else break end
@@ -1759,10 +1762,14 @@ local parse_identlist = function(ls)
     return ids
 end
 
-parse_exprlist = function(ls)
+parse_exprlist = function(ls, lv)
     local tok, exprs = ls.token, {}
     repeat
-        exprs[#exprs + 1] = parse_expr(ls)
+        local ex = parse_expr(ls)
+        if lv and not ex:is_lvalue() then
+            syntax_error(ls, "expected lvalue")
+        end
+        exprs[#exprs + 1] = ex
     until tok.name ~= "," or not ls:get()
     return exprs
 end
@@ -2143,6 +2150,43 @@ local parse_let_with = function(ls, with)
     end
 
     return Let_Expr(ls, ltype or "def", ptrns, exprs)
+end
+
+local parse_set = function(ls)
+    local tok = ls.token
+    push_curline(ls)
+    ls:get()
+
+    local lhs
+    if tok.name == "(" then
+        ls:get()
+        lhs = parse_exprlist(ls, true)
+        assert_tok(ls, ")")
+        ls:get()
+    else
+        lhs = parse_expr(ls)
+        if not lhs:is_lvalue() then
+            syntax_error(ls, "expected lvalue")
+        end
+    end
+
+    local op = tok.name
+    if not Ass_Ops[op] then
+        syntax_error(ls, "unexpected symbol")
+    end
+    ls:get()
+
+    local rhs
+    if tok.name == "(" then
+        ls:get()
+        rhs = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
+    else
+        rhs = parse_expr(ls)
+    end
+
+    return Binary_Expr(ls, op, lhs, rhs)
 end
 
 local parse_sequence = function(ls)
@@ -2888,6 +2932,8 @@ local parse_simpleexpr = function(ls, mult)
         return parse_function(ls)
     elseif name == "let" then
         return parse_let_with(ls)
+    elseif name == "set" then
+        return parse_set(ls)
     elseif name == "with" then
         return parse_let_with(ls, true)
     elseif name == "seq" then
@@ -3003,31 +3049,12 @@ parse_binexpr = function(ls, mp)
 
     local opn = tok.name
     local aop = Ass_Ops[opn]
-    if not lhs.name and not aop then
-        syntax_error(ls, "unexpected symbol")
-    elseif aop then
-        if not lhs.name then
-            for i = 1, #lhs do
-                if not lhs[i]:is_lvalue() then
-                    syntax_error(ls, "expected lvalue")
-                end
-            end
-        elseif not lhs:is_lvalue() then
+    if aop then
+        if not lhs:is_lvalue() then
             syntax_error(ls, "expected lvalue")
         end
-        local op = tok.name
         ls:get()
-        local rhs
-        if tok.name == "(" then
-            ls:get()
-            local el = parse_exprlist(ls)
-            assert_tok(ls, ")")
-            ls:get()
-            rhs = el
-        else
-            rhs = parse_expr(ls)
-        end
-        return Binary_Expr(ls, opn, lhs, rhs)
+        return Binary_Expr(ls, opn, lhs, parse_expr(ls))
     end
 
     while true do
@@ -3073,7 +3100,7 @@ local parse = function(fname, reader)
 end
 M.parse = parse
 
-local build = function(ast, noenv)
+local build = function(ast)
     util.randomseed(os.clock() * os.time())
 
     local ms = new_scope(Scope, nil, true)
@@ -3099,18 +3126,14 @@ local build = function(ast, noenv)
             statement = true
         })
     end
-    if not noenv then
-        local se, de = get_rt_fun("env_set"), env or get_rt_fun("def_env")
-        hdr[#hdr + 1] = gen_call(se, gen_seq({ "1", de }))
-    end
 
     return concat(hdr, "\n") .. "\n" .. ms:build()
 end
 M.build = build
 
 local loadstr = loadstring
-M.load = function(str, env)
-    return loadstr(build(parse(str), env))
+M.load = function(str)
+    return loadstr(build(parse(str)))
 end
 
 return M
