@@ -27,6 +27,7 @@ env.raw_eq   = M.__vx_raweq
 env.raw_get  = M.__vx_rawget
 env.raw_set  = M.__vx_rawset
 env.raw_len  = M.__vx_rawlen
+env.require  = M.__vx_require
 env.gcollect = M.__vx_gcollect
 env.type     = M.__vx_type
 env.pairs    = M.__vx_pairs
@@ -71,6 +72,11 @@ env.isnil  = function(n) return n == nil end
 env.tconc  = _G.table.concat
 env.floor  = math.floor
 env.ceil   = math.ceil
+
+local lload = _G.load
+env.load = function(ld, src, mode, _env)
+    return lload(ld, src, mode, _env or env)
+end
 
 -- the parser
 local parser = M.__vx_parser
