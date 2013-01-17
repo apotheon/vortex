@@ -68,6 +68,9 @@ env.isnum  = function(n) return type(n) == "number" end
 env.isfun  = function(f) return type(f) == "function" end
 env.isbool = function(b) return type(b) == "boolean" end
 env.isnil  = function(n) return n == nil end
+env.tconc  = _G.table.concat
+env.floor  = math.floor
+env.ceil   = math.ceil
 
 -- the parser
 local parser = M.__vx_parser
