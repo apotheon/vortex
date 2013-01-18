@@ -352,6 +352,10 @@ local Expr = util.Object:clone {
 
     is_ending = function(self)
         return false
+    end,
+
+    is_chained = function(self)
+        return false
     end
 }
 M.Expr = Expr
@@ -522,8 +526,8 @@ local Yield_Expr = Expr:clone {
 M.Yield_Expr = Yield_Expr
 
 -- { expr1, expr2, expr3, ... }
-local Block_Expr = Expr:clone {
-    name = "Block_Expr",
+local Do_Expr = Expr:clone {
+    name = "Do_Expr",
     __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
@@ -578,9 +582,13 @@ local Block_Expr = Expr:clone {
     is_multret = function(self)
         local vexpr = self[1]
         return vexpr and vexpr:is_multret()
+    end,
+
+    is_chained = function(self)
+        return true
     end
 }
-M.Block_Expr = Block_Expr
+M.Do_Expr = Do_Expr
 
 -- { { key, val }, { key, val }, ... }
 local Table_Expr = Expr:clone {
@@ -859,7 +867,7 @@ local Function_Expr = Expr:clone {
 
         -- avoid temps
         local body = self[3]
-        if body:is_a(Block_Expr) then
+        if body:is_a(Do_Expr) then
             body:generate(fs, {
                 no_scope = true, return_val = true
             })
@@ -874,6 +882,10 @@ local Function_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_chained = function(self)
+        return self[3]:is_chained()
     end
 }
 M.Function_Expr = Function_Expr
@@ -940,6 +952,10 @@ local If_Expr = Expr:clone {
     is_multret = function(self)
         local fv = self[3]
         return self[2]:is_multret() or (fv and fv:is_multret())
+    end,
+
+    is_chained = function(self)
+        return (self[3] or self[2]):is_chained()
     end
 }
 M.If_Expr = If_Expr
@@ -1390,14 +1406,18 @@ local With_Expr = Expr:clone {
                 return sym
             end
         end
+    end,
+
+    is_chained = function(self)
+        return self[4]:is_chained()
     end
 }
 M.With_Expr = With_Expr
 
--- { cond, body }
-local While_Expr = Expr:clone {
-    name = "While_Expr",
-    __init = gen_ctor(2, function(self, ps) ps.lpstack:pop() end),
+-- { precond, postcond, body }
+local Loop_Expr = Expr:clone {
+    name = "Loop_Expr",
+    __init = gen_ctor(3, function(self, ps) ps.lpstack:pop() end),
 
     generate = function(self, sc, kwargs)
         local bsc = new_scope(sc)
@@ -1411,52 +1431,37 @@ local While_Expr = Expr:clone {
         }
         bsc:push(gen_label(lbeg))
 
-        local tsc = new_scope(bsc)
-        tsc:push(gen_goto(lend))
-        bsc:push(gen_if(gen_unexpr("not", self[1]:generate(bsc, {})), tsc))
-        self[2]:generate(bsc, { statement = true, no_scope = true })
-        bsc:push(gen_goto(lbeg))
-        bsc:push(gen_label(lend))
+        local prec = self[1]
+        if prec then
+            local tsc = new_scope(bsc)
+            tsc:push(gen_goto(lend))
+            bsc:push(gen_if(gen_unexpr("not", prec:generate(bsc, {})), tsc))
+        end
 
+        self[3]:generate(bsc, { statement = true, no_scope = true })
+
+        local postc = self[2]
+        if postc then
+            local tsc = new_scope(bsc)
+            tsc:push(gen_goto(lbeg))
+            bsc:push(gen_if(postc:generate(bsc, {}), tsc))
+        else
+            bsc:push(gen_goto(lbeg))
+        end
+
+        bsc:push(gen_label(lend))
         sc:push(gen_block(bsc))
     end,
 
     is_scoped = function(self)
         return true
-    end
-}
-M.While_Expr = While_Expr
-
--- { cond, body }
-local Do_While_Expr = Expr:clone {
-    name = "Do_While_Expr",
-    __init = gen_ctor(2, function(self, ps) ps.lpstack:pop() end),
-
-    generate = function(self, sc, kwargs)
-        local bsc = new_scope(sc)
-
-        local lbl = unique_sym("lbl")
-        local lbeg, lend = lbl .. "_beg", lbl .. "_end"
-        bsc.data = {
-            loop_start = lbeg,
-            loop_inc   = lbeg,
-            loop_end   = lend
-        }
-        bsc:push(gen_label(lbeg))
-        self[2]:generate(bsc, { statement = true, no_scope = true })
-        local tsc = new_scope(bsc)
-        tsc:push(gen_goto(lbeg))
-        bsc:push(gen_if(self[1]:generate(bsc, {}), tsc))
-        bsc:push(gen_label(lend))
-
-        sc:push(gen_block(bsc))
     end,
 
-    is_scoped = function(self)
-        return true
+    is_chained = function(self)
+        return self[3]:is_chained()
     end
 }
-M.Do_While_Expr = Do_While_Expr
+M.Loop_Expr = Loop_Expr
 
 -- { idents, exprs, body }
 local For_Expr = Expr:clone {
@@ -1503,6 +1508,10 @@ local For_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_chained = function(self)
+        return self[3]:is_chained()
     end
 }
 M.For_Expr = For_Expr
@@ -1574,6 +1583,10 @@ local For_Range_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
+    end,
+
+    is_chained = function(self)
+        return self[5]:is_chained()
     end
 }
 M.For_Range_Expr = For_Range_Expr
@@ -1619,7 +1632,7 @@ local Seq_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local sq, cc = get_rt_fun("seq_create"), get_rt_fun("coro_create")
         local fs, body = new_scope(sc), self[1]
-        if body:is_a(Block_Expr) then
+        if body:is_a(Do_Expr) then
             body:generate(fs, {
                 no_scope = true, return_val = true
             })
@@ -1634,6 +1647,10 @@ local Seq_Expr = Expr:clone {
 
     is_multret = function(self)
         return true
+    end,
+
+    is_chained = function(self)
+        return self[1]:is_chained()
     end
 }
 M.Seq_Expr = Seq_Expr
@@ -1645,6 +1662,10 @@ local Quote_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         return self[1]:to_lua(sc, kwargs)
+    end,
+
+    is_chained = function(self)
+        return self[1]:is_chained()
     end
 }
 M.Quote_Expr = Quote_Expr
@@ -1663,6 +1684,10 @@ local Unquote_Expr = Expr:clone {
         return gen_index(slf, gen_string("Value_Expr")) .. "("
             .. serialize(self.dinfo) .. ", "
             .. self[1]:generate(sc, kwargs) .. ")"
+    end,
+
+    is_chained = function(self)
+        return self[1]:is_chained()
     end
 }
 M.Unquote_Expr = Unquote_Expr
@@ -1779,7 +1804,7 @@ local parse_arglist = function(ls, first)
     local tok = ls.token
     local tn  = tok.name
 
-    if tn == "->" or tn == "{" or tn ~= "<ident>" then
+    if tn == "->" or tn == "do" or tn ~= "<ident>" then
         return { first }, {}
     end
 
@@ -1819,29 +1844,6 @@ local parse_arglist = function(ls, first)
 
     if not defs then defs = {} end
     return ids, defs
-end
-
-local parse_block = function(ls)
-    push_curline(ls)
-    ls:get()
-    local tok, exprs = ls.token, {}
-
-    if tok.name == "}" then
-        ls:get()
-        return Block_Expr(ls)
-    end
-
-    repeat
-        local ex = parse_expr(ls)
-        exprs[#exprs + 1] = ex
-        if ex:is_ending() then
-            break
-        end
-    until tok.name == "}"
-
-    assert_tok(ls, "}")
-    ls:get()
-    return Block_Expr(ls, unpack(exprs))
 end
 
 local parse_table = function(ls)
@@ -1906,30 +1908,6 @@ local parse_list = function(ls)
     assert_tok(ls, "]")
     ls:get()
     return List_Expr(ls, unpack(el))
-end
-
-local parse_match = function(ls)
-    push_curline(ls)
-    ls:get()
-    local el  = parse_exprlist(ls)
-    local tok = ls.token
-
-    local inb = false
-    if tok.name == "{" then
-        ls:get()
-        inb = true
-    else
-        assert_tok(ls, "->")
-        ls:get()
-    end
-
-    local body = parse_match_body(ls)
-    if inb then
-        assert_tok(ls, "}")
-        ls:get()
-    end
-
-    return Match_Expr(ls, el, unpack(body))
 end
 
 local parse_match_body
@@ -2035,41 +2013,10 @@ local parse_function = function(ls, obj)
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
     ls.lpstack:push(false)
 
-    if tok.name == "{" then
-        local lah, body = ls:lookahead()
-        if lah == "|" or lah == "case" then
-            ls:get()
-            push_curline(ls)
-            local el = {}
-            for i = 1, #ids do
-                local n = ids[i]
-                if n == "..." then break end
-                el[i] = Symbol_Expr(nil, n)
-            end
-            body = Match_Expr(ls, el, unpack(parse_match_body(ls)))
-            assert_tok(ls, "}")
-            ls:get()
-        else
-            body = parse_block(ls)
-        end
-        local fnexpr = Function_Expr(ls, ids, defs, body)
-        if name then
-            if obj then
-                return Value_Expr(ls, name), fnexpr
-            elseif tbl then
-                return Binary_Expr(ls, "=", Index_Expr(ls,
-                    Symbol_Expr(ls, tbl), Value_Expr(ls, name)),
-                        fnexpr)
-            else
-                return Let_Expr(ls, ltype or "def",
-                    { Variable_Pattern(ls, name) }, { fnexpr })
-            end
-        end
-        return fnexpr
+    if tok.name ~= "do" then
+        assert_tok(ls, "->")
+        ls:get()
     end
-
-    assert_tok(ls, "->")
-    ls:get()
 
     local n, fnexpr = tok.name
     if n == "|" or n == "case" then
@@ -2138,15 +2085,11 @@ local parse_let_with = function(ls, with)
     end
 
     if with then
-        local body
-        if tok.name == "{" then
-            body = parse_block(ls)
-        else
+        if tok.name ~= "do" then
             assert_tok(ls, "->")
             ls:get()
-            body = parse_expr(ls)
         end
-        return With_Expr(ls, ltype or "def", ptrns, exprs, body)
+        return With_Expr(ls, ltype or "def", ptrns, exprs, parse_expr(ls))
     end
 
     return Let_Expr(ls, ltype or "def", ptrns, exprs)
@@ -2195,13 +2138,10 @@ local parse_sequence = function(ls)
     ls.fnstack:push({ vararg = false })
     ls.lpstack:push(false)
 
-    local tok = ls.token
-    if tok.name == "{" then
-        return Seq_Expr(ls, parse_block(ls))
+    if ls.token.name ~= "do" then
+        assert_tok(ls, "->")
+        ls:get()
     end
-
-    assert_tok(ls, "->")
-    ls:get()
 
     return Seq_Expr(ls, parse_expr(ls))
 end
@@ -2210,13 +2150,10 @@ local parse_quote = function(ls)
     push_curline(ls)
     ls:get()
 
-    local tok = ls.token
-    if tok.name == "{" then
-        return Quote_Expr(ls, parse_block(ls))
+    if ls.token.name ~= "do" then
+        assert_tok(ls, "->")
+        ls:get()
     end
-
-    assert_tok(ls, "->")
-    ls:get()
 
     return Quote_Expr(ls, parse_expr(ls))
 end
@@ -2225,13 +2162,10 @@ local parse_unquote = function(ls)
     push_curline(ls)
     ls:get()
 
-    local tok = ls.token
-    if tok.name == "{" then
-        return Unquote_Expr(ls, parse_block(ls))
+    if ls.token.name ~= "do" then
+        assert_tok(ls, "->")
+        ls:get()
     end
-
-    assert_tok(ls, "->")
-    ls:get()
 
     return Unquote_Expr(ls, parse_expr(ls))
 end
@@ -2280,25 +2214,16 @@ local parse_if = function(ls)
     local cond = parse_expr(ls)
     local tok  = ls.token
 
-    local tval
-    if tok.name == "{" then
-        tval = parse_block(ls)
-    else
+    if tok.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
-        tval = parse_expr(ls)
     end
+    local tval = parse_expr(ls)
 
     if tok.name == "else" then
         ls:get()
-        if tok.name == "{" then
-            return If_Expr(ls, cond, tval, parse_block(ls))
-        else
-            if tok.name == "->" then
-                ls:get()
-            end
-            return If_Expr(ls, cond, tval, parse_expr(ls))
-        end
+        if tok.name == "->" then ls:get() end
+        return If_Expr(ls, cond, tval, parse_expr(ls))
     end
 
     return If_Expr(ls, cond, tval, nil)
@@ -2506,15 +2431,12 @@ parse_match_body = function(ls)
     assert_tok(ls, "|", "case")
     repeat
         ls:get()
-        local pl, body = parse_pattern_list(ls)
-        if tok.name == "{" then
-            body = parse_block(ls)
-        else
+        local pl = parse_pattern_list(ls)
+        if tok.name ~= "do" then
             assert_tok(ls, "->")
             ls:get()
-            body = parse_expr(ls)
         end
-        ret[#ret + 1] = { pl, body }
+        ret[#ret + 1] = { pl, parse_expr(ls) }
     until tok.name ~= "|" and tok.name ~= "case"
     return ret
 end
@@ -2525,65 +2447,70 @@ local parse_match = function(ls)
     local el  = parse_exprlist(ls)
     local tok = ls.token
 
-    local inb = false
-    if tok.name == "{" then
-        ls:get()
-        inb = true
-    else
-        assert_tok(ls, "->")
-        ls:get()
-    end
-
-    local body = parse_match_body(ls)
-    if inb then
-        assert_tok(ls, "}")
-        ls:get()
-    end
-
-    return Match_Expr(ls, el, unpack(body))
+    assert_tok(ls, "->")
+    ls:get()
+    return Match_Expr(ls, el, unpack(parse_match_body(ls)))
 end
 
-local parse_while = function(ls)
+local parse_do = function(ls)
     push_curline(ls)
     ls:get()
-    local cond = parse_expr(ls)
-    local tok  = ls.token
+    local tok, exprs = ls.token, {}
 
-    ls.lpstack:push(true)
-    local body
-    if tok.name == "{" then
-        body = parse_block(ls)
-    else
-        assert_tok(ls, "->")
+    if tok.name == ";;" then
         ls:get()
-        body = parse_expr(ls)
+        return Do_Expr(ls)
     end
 
-    return While_Expr(ls, cond, body)
+    while true do
+        local ex = parse_expr(ls)
+        exprs[#exprs + 1] = ex
+        if ex:is_ending() or tok.name == ";;" then
+            break
+        end
+        if not ex:is_chained() then
+            assert_tok(ls, ";")
+            ls:get()
+        end
+    end
+
+    assert_tok(ls, ";;")
+    ls:get()
+    return Do_Expr(ls, unpack(exprs))
 end
 
-local parse_dowhile = function(ls)
+local parse_loop = function(ls)
     push_curline(ls)
     ls:get()
-    ls.lpstack:push(true)
-    local body
     local tok = ls.token
-    if tok.name == "{" then
-        body = parse_block(ls)
-    else
+
+    local precond
+    if tok.name == "while" then
+        ls:get()
+        precond = parse_expr(ls)
+    end
+
+    if ls.token.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
-        body = parse_expr(ls)
     end
-    assert_tok(ls, "while")
-    ls:get()
-    return Do_While_Expr(ls, parse_expr(ls), body)
+
+    ls.lpstack:push(true)
+    local body = parse_expr(ls)
+
+    local postcond
+    if tok.name == "while" then
+        ls:get()
+        postcond = parse_expr(ls)
+    end
+
+    return Loop_Expr(ls, precond, postcond, body)
 end
 
 local parse_for = function(ls)
     push_curline(ls)
     ls:get()
-    local tok, ident, body, ids, exprs, first, last, step = ls.token
+    local tok, ident, ids, exprs, first, last, step = ls.token
     assert_tok(ls, "<ident>")
 
     -- for range
@@ -2611,18 +2538,15 @@ local parse_for = function(ls)
     end
 
     ls.lpstack:push(true)
-    if tok.name == "{" then
-        body = parse_block(ls)
-    else
+    if tok.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
-        body = parse_expr(ls)
     end
 
     if range then
-        return For_Range_Expr(ls, ident, first, last, step, body)
+        return For_Range_Expr(ls, ident, first, last, step, parse_expr(ls))
     else
-        return For_Expr(ls, ids, exprs, body)
+        return For_Expr(ls, ids, exprs, parse_expr(ls))
     end
 end
 
@@ -2948,10 +2872,10 @@ local parse_simpleexpr = function(ls, mult)
         return parse_if(ls)
     elseif name == "match" then
         return parse_match(ls)
-    elseif name == "while" then
-        return parse_while(ls)
     elseif name == "do" then
-        return parse_dowhile(ls)
+        return parse_do(ls)
+    elseif name == "loop" then
+        return parse_loop(ls)
     elseif name == "for" then
         return parse_for(ls)
     elseif name == "break" then
@@ -2979,8 +2903,6 @@ local parse_simpleexpr = function(ls, mult)
         return parse_object(ls)
     elseif name == "new" then
         return parse_new(ls)
-    elseif name == "{" then
-        return parse_block(ls)
     elseif name == "__FILE__" then
         push_curline(ls)
         ls:get()

@@ -42,6 +42,7 @@ local keywords = {
     ["if"     ] = true,
     ["in"     ] = true,
     ["let"    ] = true,
+    ["loop"   ] = true,
     ["match"  ] = true,
     ["module" ] = true,
     ["new"    ] = true,
@@ -435,14 +436,14 @@ lex = function(ls, instr)
         -- numbers
         elseif is_digit(curr) then
             read_number(ls)
-        -- : or ::
-        elseif curr == ":" then
+        -- : or ::, ; or ;;
+        elseif curr == ":" or curr == ";" then
             next_char(ls)
-            if ls.current == ":" then
+            if ls.current == curr then
                 next_char(ls)
-                yield("::")
+                yield(curr .. curr)
             else
-                yield(":")
+                yield(curr)
             end
         -- $ or $(
         elseif curr == "$" then
