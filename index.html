@@ -60,23 +60,27 @@
             and many of the features are incomplete/missing/undecided on.</span></p>
             <p>The IRC channel: #vortex-lang @ irc.freenode.net</p>
             <h3>First, a small taste of the language.</h3>
-            <pre class="code">let env = [ a = 1, b = 2, c = 3 ]
-let (Add, Mul, Var, Num) = (
-    fn a, b -> fn env -> a(env) + b(env),
-    fn a, b -> fn env -> a(env) * b(env),
-    fn a    -> fn env -> env[a],
-    fn a    -> fn env -> a
-)
+            <pre class="code">/* sample output:
+ * [ 82, 53, 62, 67, 47, 63, 47, 7, 49, 59, 74, 97, 32, 65, 8 ]
+ * [ 7, 8, 32, 47, 47, 49, 53, 59, 62, 63, 65, 67, 74, 82, 97 ]
+ */
 
-// (a + (2 * b)) * c
-let tree = Mul(Add(Var("a"), Mul(Num(2), Var("b"))), Var("c"))
-print(tree(env))</pre>
+math.randomseed(os.time())
+fn filter(l, f) -> [ seq -> for i, v in ipairs(l) -> if f(v) -> yield v ]
+
+fn rec qsort(l) ->
+    | [] -> []
+    | x :: xs -> qsort(filter(xs, fn v -> v <  x))
+       ++ [x] ++ qsort(filter(xs, fn v -> v >= x))
+
+let t1 = [ seq -> for i = 1 .. 15 -> yield math.random(1, 99) ]
+print(e"[ $(tconc(t1, ', ')) ]\n[ $(tconc(qsort(t1), ', ')) ]")</pre>
             <h3>Vortex is convenient.</h3>
-            <p>It includes familiar curly braced syntax inspired by languages
-            such as Lua, Scheme, Rust, OCaml and F#. Staying true to its roots,
-            it provides facilities for semantic extension and adds its own for
-            the syntax as well. It's multi-paradigm, providing builtin support
-            for several programming styles by default, primarily functional.</p>
+            <p>It includes syntax inspired by languages such as Lua, Scheme,
+            Rust, OCaml and F#. Staying true to its roots, it provides
+            facilities for semantic extension and adds its own for the syntax
+            as well. It's multi-paradigm, providing builtin support for several
+            programming styles by default, primarily functional.</p>
             <p>It's a fully expression based language, having no statements. There
             are multiple expressions that are, however, mostly used as statements
             and do not work like expressions in the traditional form (such as
@@ -86,7 +90,7 @@ print(tree(env))</pre>
             including:</p><ul>
                 <li>Everything is an expression [done]</li>
                 <li>Function arguments with default values [done]</li>
-                <li>Blocks are expressions [done]</li>
+                <li>Chains are expressions [done]</li>
                 <li>Builtin syntax for coroutines and generators [not yet]</li>
                 <li>Pattern matching [done]</li>
                 <li>Sequences [done]</li>
@@ -115,6 +119,9 @@ print(tree(env))</pre>
         <div class="box">
             <h2><a name="news"></a>News</h2>
             <dl>
+                <dt><sup>January 19 2013</sup>More updates</dt>
+                <dd>New features, new examples, updated website text. Check
+                out git logs for more information.</dd>
                 <dt><sup>November 8 2012</sup>Updates</dt>
                 <dd>Implemented lots of features, like pattern matching,
                 objects, proper loops and so on. All examples on this
@@ -129,17 +136,17 @@ print(tree(env))</pre>
             <h2><a name="about"></a>About Vortex</h2>
             <p>Vortex was created by Daniel "q66" Kolesa as an attempt to
             create a language that uses Lua as an intermediate step. It tries
-            to keep the best from Lua while eliminating the noise and verbosities
-            and adding new useful features.</p>
-            <p>Instead of using a limited indent-based syntax, Vortex stays with
-            a free form one where whitespace is insignificant, allowing for custom
-            formatting of the source code, but at the same time attempts to make
-            it as clean as possible. Here you can see some of the features Vortex
-            has.</p>
+            to keep the best from Lua while eliminating the noise and
+            verbosities and adding new useful features.</p>
+            <p>Instead of using a limited indent-based syntax, Vortex stays
+            with a free form one where whitespace is insignificant, allowing
+            for custom formatting of the source code, but at the same time
+            attempts to make  it as clean as possible. Here you can see some
+            of the features Vortex has.</p>
             <pre class="code">/* tail recursive, pattern matched factorial
    /* long comments can be nested */
  */
-let rec fact = fn n, acc = 1 ->
+fn rec fact(n, acc = 1) ->
     | 0 -> acc
     | _ -> fact(n - 1, n * acc)
 
@@ -148,34 +155,59 @@ let (a, b, c) = seq -> for k, v in pairs([ 5, 10, 15 ]) -> yield v
 assert(a == 5 and b == 10 and c == 15)
 
 // sequences as list comprehensions
-let fun = fn args... ->
+fn fun(args...) ->
     [ seq -> for k, v in pairs(args) -> yield v * 2 ]
 assert(fun(1, 2, 3)[3] == 6)
 
 // hybrid prototype/class object system with multiple differential inheritance
 // if you're inheriting from Object, you don't specify it
-let Foo = clone {
-    __init = fn self, x {
-        self.x = x
-    }
+let Foo = clone ->
+    fn __init(x) -> @x = x;
+    fn boo() -> print("boo!", @x)
+;;
 
-    boo = fn self -> print("boo!", self.x)
-}
+let Bar = clone ->
+   fn baa() -> print("baa!", @x)
+;;
 
-let Bar = clone {
-    baa = fn self -> print("baa!", self.x)
-}
-
-let Baz = clone (Foo, Bar) {
-    boo = fn self {
-        print("new boo!")
-        Foo.boo(self)
-    }
-}
+let Baz = clone (Foo, Bar) ->
+    fn boo() do
+        print("new boo!");
+        Foo.boo(self);;
+;;
 
 let inst = new Baz(5)
 inst:boo()
 inst:baa()</pre>
+            <pre class="code">/* A more realistic quicksort example
+ * median of 3 pivot, insertion sort for small chunks
+ */
+
+fn partition(lst, l, r, p, fun) -> with pivot = lst[p] do
+    set (lst[p], lst[r]) = (lst[r], lst[p]);
+    for i = l .. r - 1 -> if fun(lst[i], pivot) do
+        set (lst[i], lst[l]) = (lst[l], lst[i]);
+        l += 1;;
+    set (lst[l], lst[r]) = (lst[r], lst[l]);
+    return l;;
+
+fn insort(lst, l = 1, r = #lst, f = fn a, b -> a < b) -> for i = l .. r ->
+    with (j, v) = (i, lst[i]) do
+        loop while j > 1 and not f(lst[j - 1], v) do
+            lst[j] = lst[j - 1];
+            j -= 1;;
+        lst[j] = v;;
+
+fn rec qsort(lst, l = 1, r = #lst, f = fn a, b -> a < b) -> if (r - l) > 10 ->
+    with pi = partition(lst, l, r, floor((l + r) / 2), f) do
+        qsort(lst, l, pi - 1, f);
+        qsort(lst, pi + 1, r, f);;
+else insort(lst, l, r, f)
+
+let t1 = [ 5, 10, 36, 24, 18, 7, 1, 3, 13, 27, 84 ]
+print(e"[ $(tconc(t1, ', ')) ]")
+qsort(t1)
+print(e"[ $(tconc(t1, ', ')) ]")</pre>
         </div>
         <br class="sep"/>
         <div class="box">
