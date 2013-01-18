@@ -2175,19 +2175,10 @@ local parse_enum = function(ls)
     ls:get()
 
     local tok = ls.token
-    local curly = false
-    if tok.name == "{" then
-        ls:get()
-        if tok.name == "}" then
-            syntax_error("unexpected symbol")
-        end
-        curly = true
-    else
-        assert_tok(ls, "->")
-        ls:get()
-        assert_tok(ls, "(")
-        ls:get()
-    end
+    assert_tok(ls, "->")
+    ls:get()
+    assert_tok(ls, "(")
+    ls:get()
 
     local t = {}
     repeat
@@ -2202,7 +2193,7 @@ local parse_enum = function(ls)
         end
     until tok.name ~= "," or ls:get() ~= "<ident>"
 
-    assert_tok(ls, curly and "}" or ")")
+    assert_tok(ls, ")")
     ls:get()
 
     return Enum_Expr(ls, unpack(t))
@@ -2602,7 +2593,7 @@ local parse_object = function(ls)
         el = parse_exprlist(ls, true)
         assert_tok(ls, ")")
         ls:get()
-    elseif tok.name ~= "{" and tok.name ~= "[" then
+    elseif tok.name ~= ";;" and tok.name ~= "->" and tok.name ~= "[" then
         el = { parse_primaryexpr(ls) }
     end
 
@@ -2621,20 +2612,18 @@ local parse_object = function(ls)
 
         assert_tok(ls, "]")
         ls:get()
-
-        if tok.name ~= "{" then
-            return Object_Expr(ls, el and el or {
-                Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs)
-        end
     end
 
-    assert_tok(ls, "{")
-    ls:get()
-    if tok.name == "}" then
-        ls:get()
+    if (cargs and tok.name ~= "->") or tok.name == ";;" then
+        if tok.name == ";;" then
+            ls:get()
+        end
         return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {})
     end
+
+    assert_tok(ls, "->")
+    ls:get()
 
     local tbl = {}
     repeat
@@ -2653,12 +2642,12 @@ local parse_object = function(ls)
             ls:get()
             tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         end
-        if tok.name == "," then
+        if tok.name == ";" then
             ls:get()
         end
-    until tok.name == "}"
+    until tok.name == ";;"
 
-    assert_tok(ls, "}")
+    assert_tok(ls, ";;")
     ls:get()
     return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {},
