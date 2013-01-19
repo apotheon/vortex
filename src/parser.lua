@@ -352,10 +352,6 @@ local Expr = util.Object:clone {
 
     is_ending = function(self)
         return false
-    end,
-
-    is_chained = function(self)
-        return false
     end
 }
 M.Expr = Expr
@@ -582,10 +578,6 @@ local Do_Expr = Expr:clone {
     is_multret = function(self)
         local vexpr = self[1]
         return vexpr and vexpr:is_multret()
-    end,
-
-    is_chained = function(self)
-        return true
     end
 }
 M.Do_Expr = Do_Expr
@@ -882,10 +874,6 @@ local Function_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    is_chained = function(self)
-        return self[3]:is_chained()
     end
 }
 M.Function_Expr = Function_Expr
@@ -952,10 +940,6 @@ local If_Expr = Expr:clone {
     is_multret = function(self)
         local fv = self[3]
         return self[2]:is_multret() or (fv and fv:is_multret())
-    end,
-
-    is_chained = function(self)
-        return (self[3] or self[2]):is_chained()
     end
 }
 M.If_Expr = If_Expr
@@ -1406,10 +1390,6 @@ local With_Expr = Expr:clone {
                 return sym
             end
         end
-    end,
-
-    is_chained = function(self)
-        return self[4]:is_chained()
     end
 }
 M.With_Expr = With_Expr
@@ -1455,10 +1435,6 @@ local Loop_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    is_chained = function(self)
-        return self[3]:is_chained()
     end
 }
 M.Loop_Expr = Loop_Expr
@@ -1508,10 +1484,6 @@ local For_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    is_chained = function(self)
-        return self[3]:is_chained()
     end
 }
 M.For_Expr = For_Expr
@@ -1583,10 +1555,6 @@ local For_Range_Expr = Expr:clone {
 
     is_scoped = function(self)
         return true
-    end,
-
-    is_chained = function(self)
-        return self[5]:is_chained()
     end
 }
 M.For_Range_Expr = For_Range_Expr
@@ -1647,10 +1615,6 @@ local Seq_Expr = Expr:clone {
 
     is_multret = function(self)
         return true
-    end,
-
-    is_chained = function(self)
-        return self[1]:is_chained()
     end
 }
 M.Seq_Expr = Seq_Expr
@@ -1662,10 +1626,6 @@ local Quote_Expr = Expr:clone {
 
     generate = function(self, sc, kwargs)
         return self[1]:to_lua(sc, kwargs)
-    end,
-
-    is_chained = function(self)
-        return self[1]:is_chained()
     end
 }
 M.Quote_Expr = Quote_Expr
@@ -1684,10 +1644,6 @@ local Unquote_Expr = Expr:clone {
         return gen_index(slf, gen_string("Value_Expr")) .. "("
             .. serialize(self.dinfo) .. ", "
             .. self[1]:generate(sc, kwargs) .. ")"
-    end,
-
-    is_chained = function(self)
-        return self[1]:is_chained()
     end
 }
 M.Unquote_Expr = Unquote_Expr
@@ -1777,6 +1733,9 @@ local parse_expr
 local parse_exprlist
 local parse_pattern_list
 local parse_pattern
+
+-- we just passed double semicolon if true
+local dsem = false
 
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
@@ -2450,6 +2409,7 @@ local parse_do = function(ls)
 
     if tok.name == ";;" then
         ls:get()
+        dsem = true
         return Do_Expr(ls)
     end
 
@@ -2459,13 +2419,14 @@ local parse_do = function(ls)
         if ex:is_ending() or tok.name == ";;" then
             break
         end
-        if not ex:is_chained() then
+        if not dsem then
             assert_tok(ls, ";")
             ls:get()
         end
     end
 
     assert_tok(ls, ";;")
+    dsem = true
     ls:get()
     return Do_Expr(ls, unpack(exprs))
 end
@@ -2616,6 +2577,7 @@ local parse_object = function(ls)
 
     if (cargs and tok.name ~= "->") or tok.name == ";;" then
         if tok.name == ";;" then
+            dsem = true
             ls:get()
         end
         return Object_Expr(ls, el and el or {
@@ -2648,6 +2610,7 @@ local parse_object = function(ls)
     until tok.name == ";;"
 
     assert_tok(ls, ";;")
+    dsem = true
     ls:get()
     return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {},
@@ -2987,6 +2950,7 @@ parse_binexpr = function(ls, mp)
 end
 
 parse_expr = function(ls)
+    dsem = false
     return parse_binexpr(ls)
 end
 
@@ -3002,9 +2966,26 @@ local parse = function(fname, reader)
     ls.fnstack:push({ vararg = false })
     ls:get()
 
-    local ast = {}
-    while ls.token.name ~= "<eos>" do
-        ast[#ast + 1] = parse_expr(ls)
+    local ast, tok = {}, ls.token
+    if tok.name ~= "<eos>" then
+        while true do
+            local ex = parse_expr(ls)
+            ast[#ast + 1] = ex
+            if tok.name == "<eos>" then
+                break
+            elseif tok.name == ";;" then
+                ls:get()
+                assert_tok(ls, "<eos>")
+                break
+            elseif not dsem then
+                assert_tok(ls, ";")
+                ls:get()
+                if tok.name == "<eos>" then
+                    break
+                end
+            end
+        end
+        dsem = false
     end
 
     return ast
