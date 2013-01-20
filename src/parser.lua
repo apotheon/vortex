@@ -2796,7 +2796,7 @@ parse_suffixedexpr = function(ls)
                 syntax_error(ls, "expected lvalue")
             end
             ls:get()
-            exp = Binary_Expr(ls, op, exp, parse_suffixedexpr(ls))
+            exp = Binary_Expr(ls, op, exp, parse_expr(ls))
         else
             return exp
         end
