@@ -2636,18 +2636,12 @@ end
 
 local parse_binexpr
 
-parse_primaryexpr = function(ls, mult)
+parse_primaryexpr = function(ls)
     local tok = ls.token
     local tn = tok.name
     if tn == "(" then
         ls:get()
-        local exp
-        if mult then
-            exp = parse_exprlist(ls)
-            if #exp == 1 then exp = exp[1] end
-        else
-            exp = parse_expr(ls)
-        end
+        local exp = parse_expr(ls)
         if tok.name ~= ")" then
             syntax_error(ls, "missing ')'")
         end
@@ -2736,18 +2730,20 @@ parse_primaryexpr = function(ls, mult)
         ls:get()
         return Index_Expr(ls, Symbol_Expr(ls, "self"),
             Value_Expr(ls, v))
+    elseif Unary_Ops[tn] then
+        push_curline(ls)
+        ls:get()
+        return Unary_Expr(ls, tn, parse_binexpr(ls, Unary_Ops[tn]))
     else
         syntax_error(ls, "unexpected symbol")
     end
 end
 
-local parse_suffixedexpr = function(ls, mult)
+local parse_suffixedexpr
+parse_suffixedexpr = function(ls)
     local tok = ls.token
 
-    local exp = parse_primaryexpr(ls, mult)
-    if mult and not exp.name then
-        return exp
-    end
+    local exp = parse_primaryexpr(ls)
     while true do
         if tok.name == "." or tok.name == ":" then
             local mcall = (tok.name == ":")
@@ -2794,13 +2790,20 @@ local parse_suffixedexpr = function(ls, mult)
                 ls:get()
             end
             exp = Call_Expr(ls, false, exp, unpack(el))
+        elseif Ass_Ops[tok.name] then
+            local op = tok.name
+            if not exp:is_lvalue() then
+                syntax_error(ls, "expected lvalue")
+            end
+            ls:get()
+            exp = Binary_Expr(ls, op, exp, parse_suffixedexpr(ls))
         else
             return exp
         end
     end
 end
 
-local parse_simpleexpr = function(ls, mult)
+local parse_simpleexpr = function(ls)
     local tok = ls.token
     local name = tok.name
 
@@ -2869,22 +2872,15 @@ local parse_simpleexpr = function(ls, mult)
         push_curline(ls)
         ls:get()
         return Vararg_Expr(ls)
-    elseif Unary_Ops[name] then
-        push_curline(ls)
-        ls:get()
-        return Unary_Expr(ls, name, parse_binexpr(ls, Unary_Ops[name]))
     else
-        return parse_suffixedexpr(ls, mult)
+        return parse_binexpr(ls)
     end
 end
 
-local parse_condexpr = function(ls, mult)
+local parse_condexpr = function(ls)
     local tok = ls.token
 
-    local exp = parse_simpleexpr(ls, mult)
-    if mult and not exp.name then
-        return exp
-    end
+    local exp = parse_simpleexpr(ls)
     while true do
         if tok.name == "unless" then
             push_curline(ls)
@@ -2919,17 +2915,7 @@ parse_binexpr = function(ls, mp)
     push_curline(ls)
     mp = mp or 1
 
-    local lhs = parse_condexpr(ls, true)
-
-    local opn = tok.name
-    local aop = Ass_Ops[opn]
-    if aop then
-        if not lhs:is_lvalue() then
-            syntax_error(ls, "expected lvalue")
-        end
-        ls:get()
-        return Binary_Expr(ls, opn, lhs, parse_expr(ls))
-    end
+    local lhs = parse_suffixedexpr(ls)
 
     while true do
         local cur = tok.name
@@ -2951,7 +2937,7 @@ end
 
 parse_expr = function(ls)
     dsem = false
-    return parse_binexpr(ls)
+    return parse_condexpr(ls)
 end
 
 local parse = function(fname, reader)

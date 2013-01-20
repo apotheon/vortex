@@ -33,6 +33,7 @@ local keywords = {
     ["cycle"  ] = true,
     ["do"     ] = true,
     ["else"   ] = true,
+    ["end"    ] = true,
     ["enum"   ] = true,
     ["false"  ] = true,
     ["fn"     ] = true,
