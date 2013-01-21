@@ -107,4 +107,4 @@ env._G       = env
 env._R       = M
 env._VERSION = "Vortex 0.1"
 
-envset(7, env)
+M.__vx_env_set(7, env)
