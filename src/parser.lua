@@ -2412,11 +2412,10 @@ local parse_do = function(ls)
     while true do
         local ex = parse_expr(ls)
         exprs[#exprs + 1] = ex
-        if ex:is_ending() or tok.name == ";;" or tok.name == "end" then
-            break
-        end
         if tok.name == ";" then
             ls:get()
+        elseif ex:is_ending() or tok.name == ";;" or tok.name == "end" then
+            break
         end
     end
 
