@@ -1,0 +1,130 @@
+/* vxrepl.lua - a Vortex interpreter and REPL
+ * Provides interactive console, script running and offline compilation
+ *
+ * Copyright (C) 2013 Daniel "q66" Kolesa <quaker66@gmail.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+let cutil = require("vxutil")
+
+let (signal, SIGINT) = (cutil.signal, cutil.SIGINT)
+let (readline, add_history, isatty)
+    = (cutil.readline, cutil.add_history, cutil.isatty)
+
+let (error, sethook, traceback) = (error, debug.sethook, debug.traceback)
+let concat = tconc
+
+let (xpcall, unpack) = (xpcall, unpack)
+
+let stderr = io.stderr
+let (write, flush) = (io.write, io.flush)
+
+// the SIGINT hook - called when SIGINT is raised
+// makes sure to reset the hook and error appropriately
+fn hook_interrupt() do
+    sethook()
+    error("interrupted!", 3)
+end
+
+// the SIGINT handler - sets the signal back to defaults
+// and activates hook_interrupt above
+// used to handle ctrl-c on infinite loops etc.
+fn sig_interrupt(sig) do
+    signal(sig)
+    sethook(hook_interrupt, "crl", 1)
+end
+
+fn print_results(stat, ...) do
+    if not ... -> return nil
+    let msg = concat([ ... ], ", ")
+    if not stat do
+        stderr:write(msg, "\n")
+        stderr:flush()
+    end else do
+        write(msg, "\n")
+        flush()
+    end
+end
+/*
+-- strips the REPL debug lines from tracebacks
+local repl_traceback = function(msg)
+    msg = traceback(msg, 2)
+    return msg:match("^(.*stdin:%d: in main chunk).*$")
+        or msg or "(no error message)"
+end
+*/
+
+// SIGINTed xpcall
+fn spcall(f, ...) do
+    signal(SIGINT, sig_interrupt)
+    let rets = [ xpcall(f, nil, ...) ]
+    signal(SIGINT)
+    return unpack(rets)
+end
+
+fn repl_header() -> print(_VERSION ~ " self-hosted REPL by q66")
+fn get_prompt(n) -> ">":rep(n) ~ " "
+
+// takes an error message, if it ends with <eos>' it means our input is
+// incomplete - used to allow the user to split the input into multiple lines
+fn input_incomplete(msg) -> msg and string["match"](msg, "^.*<eos>'") != nil
+
+// gets a new line from stdin, uses readline if available
+// if the line starts with =, it interprets it as a return
+fn input_get_line(n) -> with line = readline(get_prompt(n)) do
+    if not line -> return nil
+    let ln = #line
+
+    if line:sub(ln) == "\n" -> line = line:sub(1, ln - 1)
+    return (line unless (n == 1 and line:sub(1, 1) == "=")
+        else ("return " ~ line:sub(2)))
+end
+
+// loads a line, returning a function on success
+// and a nil + an error message on failure
+fn input_load_line() do
+    if not let line = input_get_line(1) -> return nil
+    let (f, err) = nil
+    loop while true do
+        set (f, err) = load(parser.build(parser.parse(line)), "=stdin")
+        break unless input_incomplete(err)
+
+        return (f, err) unless let ln = input_get_line(2)
+        line = line ~ "\n" ~ ln
+    end
+    if #line > 0 -> add_history(line)
+    return (f, err)
+end
+
+// the interactive REPL loop - loads a line and either reports
+// the error or calls the function and reports the status.
+fn interactive_repl() do
+    signal(SIGINT) // so that we don't have to press ctrl-c twice
+    loop while true -> with (stat, msg) = input_load_line() ->
+        print_results(stat, msg) unless stat else print_results(spcall(stat))
+    write("\n")
+    flush()
+end
+
+// main entry - has to be protected
+pcall(fn argv -> if true do
+    repl_header()
+    interactive_repl()
+end, arg)
