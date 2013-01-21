@@ -3000,9 +3000,4 @@ local build = function(ast)
 end
 M.build = build
 
-local loadstr = loadstring
-M.load = function(str)
-    return loadstr(build(parse(str)))
-end
-
 return M

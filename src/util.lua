@@ -478,8 +478,7 @@ return {
 
     -- fatal error, prints to stderr and exits
     fatal = function(msg)
-        io_stderr:write(msg, "\n")
-        os.exit(1)
+        error(msg, 0)
     end,
 
     Object = Object,

@@ -27,6 +27,22 @@ local test_opt = function(section, field, value)
     end
 end
 
+local stderr, exit = io.stderr, os.exit
+local error_exit = function(msg)
+    stderr:write(msg, "\n")
+    stderr:flush()
+    exit(1)
+end
+
+local tb = debug.traceback
+local tbhandler = function(msg)
+    return msg:match("^.+%.lua:%d+: .*$") and tb(msg) or msg
+end
+
+local cpcall = function(fun, ...)
+    return xpcall(fun, tbhandler, ...)
+end
+
 local compile_all = function(args)
     local opts, args = util.getopt(args, "so:", { "stdout" })
 
@@ -46,13 +62,17 @@ local compile_all = function(args)
             return 1
         end
 
-        local ast  = parser.parse(ifname, util.file_istream(rs))
-        local code = parser.build(ast)
+        local st = util.file_istream(rs)
         io.close(rs)
+
+        local stat, ret = cpcall(parser.parse, ifname, st)
+        if not stat then error_exit(ret) end
+        stat, ret = cpcall(parser.build, ret)
+        if not stat then error_exit(ret) end
 
         if stdo then
             print("--- output for file " .. ifname .. " ---")
-            print(code)
+            print(ret)
         else
             local  ofname
             local  has_ext = ifname:find("%.vx")
@@ -69,7 +89,7 @@ local compile_all = function(args)
                 io.close(rs)
                 return 1
             end
-            ws:write(code)
+            ws:write(ret)
             io.close(ws)
         end
     end

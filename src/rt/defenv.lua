@@ -9,6 +9,7 @@
 local M = require("rt.core")
 
 local ipairs = ipairs
+local pcall = pcall
 
 local env = {}
 M.__vx_def_env = env
@@ -73,22 +74,32 @@ env.tconc  = _G.table.concat
 env.floor  = math.floor
 env.ceil   = math.ceil
 
-local lload = _G.load
-env.load = function(ld, src, mode, _env)
-    return lload(ld, src, mode, _env or env)
-end
-
 -- the parser
 local parser = M.__vx_parser
 env.parser   = parser
 
-local pload, envset = parser.load, env.setfenv
-env.eval = function(str, e)
-    if e then
-        return envset(pload(str, true), e)()
-    else
-        return pload(str)()
+local pparse, pbuild = parser.parse, parser.build
+local lload, concat = _G.load, table.concat
+env.load = function(ld, src, mode, _env)
+    if type(ld) ~= "string" then
+        local s = ld()
+        if s then
+            local t, i = { s }, 2
+            while true do
+                local c = ld()
+                if c then t[i] = c else break end
+                i = i + 1
+            end
+            ld = concat(t)
+        else
+            ld = nil
+        end
     end
+    local stat, ret = pcall(pparse, ld)
+    if not stat then return nil, ret end
+    stat, ret = pcall(pbuild, ret)
+    if not stat then return nil, ret end
+    return lload(ret, src, mode, _env or env)
 end
 
 env._L       = _G

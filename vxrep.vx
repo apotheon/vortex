@@ -103,7 +103,7 @@ fn input_load_line() do
     if not let line = input_get_line(1) -> return nil
     let (f, err) = nil
     loop while true do
-        set (f, err) = load(parser.build(parser.parse(line)), "=stdin")
+        set (f, err) = load(line, "=stdin")
         break unless input_incomplete(err)
 
         return (f, err) unless let ln = input_get_line(2)
