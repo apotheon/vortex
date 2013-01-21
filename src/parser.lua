@@ -2628,6 +2628,7 @@ local parse_new = function(ls)
 end
 
 local parse_binexpr
+local parse_simpleexpr
 
 parse_primaryexpr = function(ls)
     local tok = ls.token
@@ -2796,7 +2797,7 @@ parse_suffixedexpr = function(ls)
     end
 end
 
-local parse_simpleexpr = function(ls)
+parse_simpleexpr = function(ls)
     local tok = ls.token
     local name = tok.name
 
@@ -2866,14 +2867,14 @@ local parse_simpleexpr = function(ls)
         ls:get()
         return Vararg_Expr(ls)
     else
-        return parse_binexpr(ls)
+        return parse_suffixedexpr(ls)
     end
 end
 
 local parse_condexpr = function(ls)
     local tok = ls.token
 
-    local exp = parse_simpleexpr(ls)
+    local exp = parse_binexpr(ls)
     while true do
         if tok.name == "unless" then
             push_curline(ls)
@@ -2908,7 +2909,7 @@ parse_binexpr = function(ls, mp)
     push_curline(ls)
     mp = mp or 1
 
-    local lhs = parse_suffixedexpr(ls)
+    local lhs = parse_simpleexpr(ls)
 
     while true do
         local cur = tok.name
