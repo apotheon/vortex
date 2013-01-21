@@ -1734,9 +1734,6 @@ local parse_exprlist
 local parse_pattern_list
 local parse_pattern
 
--- we just passed double semicolon if true
-local dsem = false
-
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
     repeat
@@ -2407,26 +2404,23 @@ local parse_do = function(ls)
     ls:get()
     local tok, exprs = ls.token, {}
 
-    if tok.name == ";;" then
+    if tok.name == ";;" or tok.name == "end" then
         ls:get()
-        dsem = true
         return Do_Expr(ls)
     end
 
     while true do
         local ex = parse_expr(ls)
         exprs[#exprs + 1] = ex
-        if ex:is_ending() or tok.name == ";;" then
+        if ex:is_ending() or tok.name == ";;" or tok.name == "end" then
             break
         end
-        if not dsem then
-            assert_tok(ls, ";")
+        if tok.name == ";" then
             ls:get()
         end
     end
 
-    assert_tok(ls, ";;")
-    dsem = true
+    assert_tok(ls, ";;", "end")
     ls:get()
     return Do_Expr(ls, unpack(exprs))
 end
@@ -2554,7 +2548,8 @@ local parse_object = function(ls)
         el = parse_exprlist(ls, true)
         assert_tok(ls, ")")
         ls:get()
-    elseif tok.name ~= ";;" and tok.name ~= "->" and tok.name ~= "[" then
+    elseif tok.name ~= ";;" and tok.name ~= "end" and tok.name ~= "->"
+    and tok.name ~= "[" then
         el = { parse_primaryexpr(ls) }
     end
 
@@ -2575,9 +2570,9 @@ local parse_object = function(ls)
         ls:get()
     end
 
-    if (cargs and tok.name ~= "->") or tok.name == ";;" then
-        if tok.name == ";;" then
-            dsem = true
+    if (cargs and tok.name ~= "->") or tok.name == ";;"
+    or tok.name == "end" then
+        if tok.name == ";;" or tok.name == "end" then
             ls:get()
         end
         return Object_Expr(ls, el and el or {
@@ -2607,10 +2602,9 @@ local parse_object = function(ls)
         if tok.name == ";" then
             ls:get()
         end
-    until tok.name == ";;"
+    until tok.name == ";;" or tok.name == "end"
 
-    assert_tok(ls, ";;")
-    dsem = true
+    assert_tok(ls, ";;", "end")
     ls:get()
     return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {},
@@ -2936,7 +2930,6 @@ parse_binexpr = function(ls, mp)
 end
 
 parse_expr = function(ls)
-    dsem = false
     return parse_condexpr(ls)
 end
 
@@ -2959,19 +2952,17 @@ local parse = function(fname, reader)
             ast[#ast + 1] = ex
             if tok.name == "<eos>" then
                 break
-            elseif tok.name == ";;" then
+            elseif tok.name == ";;" or tok.name == "end" then
                 ls:get()
                 assert_tok(ls, "<eos>")
                 break
-            elseif not dsem then
-                assert_tok(ls, ";")
+            elseif tok.name == ";" then
                 ls:get()
                 if tok.name == "<eos>" then
                     break
                 end
             end
         end
-        dsem = false
     end
 
     return ast
