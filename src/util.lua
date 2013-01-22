@@ -392,6 +392,7 @@ local getopt = function(arglist, shortargs, longargs)
 
     -- want_val: false coming from short arg, true from long arg, nil otherwise
     local want_val, opt
+    local skip = false
     for i = 1, len do
         local str = arglist[i]
 
@@ -399,6 +400,16 @@ local getopt = function(arglist, shortargs, longargs)
             opt[2] = str
             opts[#opts + 1] = opt
             opt, str, want_val = nil, nil, nil
+            goto getopt_cycle
+        end
+
+        if not skip and str == "--" then
+            skip = true
+            goto getopt_cycle
+        end
+
+        if skip then
+            args[#args + 1] = str
             goto getopt_cycle
         end
 
