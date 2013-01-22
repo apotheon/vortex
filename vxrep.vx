@@ -97,13 +97,41 @@ fn input_get_line(n) -> with line = readline(get_prompt(n)) do
         else ("return " ~ line:sub(2)))
 end
 
+// stores "saved" locals (handled in each loaded chunk)
+let locals = []
+
+// has to be global - accessible from REPL lines
+fn glob repl_save_var(n, v) do
+    locals[n] = v
+end
+
+// the REPL environment - tries to look up unknown variables from locals
+let repl_env = set_mt([], [ __index: fn self, n -> _G[n] or locals[n] ])
+
+// appended to each REPL line; saves the local variables into locals
+// unless they begin with __ (so that temporaries are not saved)
+let localsave_str = """
+
+let __end_idx = 2
+let __get_local = debug.getlocal
+loop while true do
+    let (n, v) = __get_local(1, __end_idx)
+    if not n or n == "__end_idx" -> break
+    if n:sub(1, 2) != "__" -> repl_save_var(n, v)
+    __end_idx += 1
+end
+"""
+
+fn make_input_line(str) -> (str ~ localsave_str)
+    unless (not str or str == "") else str
+
 // loads a line, returning a function on success
 // and a nil + an error message on failure
 fn input_load_line() do
     if not let line = input_get_line(1) -> return nil
     let (f, err) = nil
     loop while true do
-        set (f, err) = load(line, "=stdin")
+        set (f, err) = load(make_input_line(line), "=stdin", nil, repl_env)
         break unless input_incomplete(err)
 
         return (f, err) unless let ln = input_get_line(2)
