@@ -1094,7 +1094,9 @@ local Table_Pattern = Expr:clone {
             local el = gen_index(expr, k)
             local pv = v:generate(ns, { expr = el,
                 next_arm = kwargs.next_arm })
-            ret = ret and gen_binexpr("and", ret, pv) or pv
+            if pv then
+                ret = ret and gen_binexpr("and", ret, pv) or pv
+            end
         end
 
         local ts = new_scope(sc)
@@ -2242,6 +2244,8 @@ local Pattern_Ops = {
     ["::"] = { 4, 3, Cons_Pattern }
 }
 
+local parse_primaryexpr
+
 local parse_suffixedpattern
 local parse_primarypattern = function(ls, let)
     local tok = ls.token
@@ -2260,22 +2264,10 @@ local parse_primarypattern = function(ls, let)
             pt = parse_suffixedpattern(ls, let, pt)
         end
         return pt
-    elseif tn == "<string>" or tn == "<number>" or tn == "true"
+    elseif tn == "<begstring>" or tn == "<number>" or tn == "true"
     or tn == "false" or tn == "nil" and not let then
         push_curline(ls)
-        push_curline(ls)
-        local v = tok.value or tn
-        ls:get()
-        if tn == "<number>" then
-            v = tonumber(v)
-        elseif tn == "true" then
-            v = true
-        elseif tn == "false" then
-            v = false
-        elseif tn == "nil" then
-            v = nil
-        end
-        return Expr_Pattern(ls, Value_Expr(ls, v))
+        return Expr_Pattern(ls, parse_primaryexpr(ls))
     elseif tn == "$" or tn == "$(" and not let then
         push_curline(ls)
         local exp = parse_expr(ls)
@@ -2533,8 +2525,6 @@ local parse_yield = function(ls)
     end
     return Yield_Expr(ls, parse_expr(ls))
 end
-
-local parse_primaryexpr
 
 local parse_object = function(ls)
     push_curline(ls)

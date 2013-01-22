@@ -422,9 +422,9 @@ local getopt = function(arglist, shortargs, longargs)
 
             local valued = vo[a]
             if valued == nil then
-                error("unrecognized option '--" .. a .. "'")
+                error("unrecognized option '--" .. a .. "'", 0)
             elseif valued == false and b then
-                error("option '--" .. a .. "' must not have an argument")
+                error("option '--" .. a .. "' must not have an argument", 0)
             elseif valued == true and not b then
                 want_val = true
             else
@@ -441,7 +441,7 @@ local getopt = function(arglist, shortargs, longargs)
             opt = { mstr }
             local valued = vo[mstr]
             if valued == nil then
-                error("invalid option -- " .. mstr)
+                error("invalid option -- " .. mstr, 0)
             elseif valued then
                 want_val = false
             else
@@ -456,13 +456,14 @@ local getopt = function(arglist, shortargs, longargs)
         ::getopt_cycle::
     end
     if want_val == true then
-        error("option '--" .. opt[1] .. "' requires an argument")
+        error("option '--" .. opt[1] .. "' requires an argument", 0)
     elseif want_val == false then
-        error("option requires an argument -- " .. opt[1])
+        error("option requires an argument -- " .. opt[1], 0)
     end
     return opts, args
 end
 
+local tb = debug.traceback
 local traceback = function(msg)
     return msg:match("^.+%.lua:%d+: .*$") and tb(msg) or msg
 end
