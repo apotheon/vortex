@@ -452,6 +452,15 @@ local getopt = function(arglist, shortargs, longargs)
     return opts, args
 end
 
+local traceback = function(msg)
+    return msg:match("^.+%.lua:%d+: .*$") and tb(msg) or msg
+end
+
+local xpcall = xpcall
+local vxpcall = function(fun, ...)
+    return xpcall(fun, traceback, ...)
+end
+
 return {
     file_istream  = ifstream,
     file_ostream  = ofstream,
@@ -482,6 +491,9 @@ return {
     fatal = function(msg)
         error(msg, 0)
     end,
+
+    traceback = traceback,
+    vxpcall = vxpcall,
 
     Object = Object,
     Stack  = Stack,

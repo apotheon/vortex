@@ -34,15 +34,7 @@ local error_exit = function(msg)
     exit(1)
 end
 
-local tb = debug.traceback
-local tbhandler = function(msg)
-    return msg:match("^.+%.lua:%d+: .*$") and tb(msg) or msg
-end
-
-local cpcall = function(fun, ...)
-    return xpcall(fun, tbhandler, ...)
-end
-
+local vxpcall = util.vxpcall
 local compile_all = function(args)
     local opts, args = util.getopt(args, "so:", { "stdout" })
 
@@ -65,9 +57,9 @@ local compile_all = function(args)
         local st = util.file_istream(rs)
         io.close(rs)
 
-        local stat, ret = cpcall(parser.parse, ifname, st)
+        local stat, ret = vxpcall(parser.parse, ifname, st)
         if not stat then error_exit(ret) end
-        stat, ret = cpcall(parser.build, ret)
+        stat, ret = vxpcall(parser.build, ret)
         if not stat then error_exit(ret) end
 
         if stdo then
