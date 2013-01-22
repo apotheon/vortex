@@ -2970,7 +2970,7 @@ end
 M.parse = parse
 
 local build = function(ast)
-    util.randomseed(os.clock() * os.time())
+    --util.randomseed(os.clock() * os.time())
 
     local ms = new_scope(Scope, nil, true)
     ms.data = {}

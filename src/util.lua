@@ -280,6 +280,8 @@ do
         q[i + 1] = ret
         return floor(ret)
     end
+
+    randomseed(0)
 end
 
 -- generates a random number from a to b
