@@ -176,11 +176,11 @@ let (stat, err) = pcall(fn argv -> if true do
 
     let (has_e, has_i, has_l, has_v, has_E) = nil
     for i, v in ipairs(opts) -> match v ->
-        | ["e", _] -> has_e = v
-        | ["i", _] -> has_i = v
-        | ["l", _] -> has_l = v
-        | ["v", _] -> has_v = v
-        | ["E", _] -> has_E = v
+        | [ "e", _ ] -> has_e = v
+        | [ "i", _ ] -> has_i = v
+        | [ "l", name ] -> _G[name] = require(name)
+        | [ "v", _ ] -> has_v = v
+        | [ "E", _ ] -> has_E = v
 
     if has_v -> repl_header()
 
