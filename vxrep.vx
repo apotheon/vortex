@@ -22,6 +22,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+let require = require
+
 let cutil = require("vxutil")
 let util  = require("src.util")
 
@@ -36,6 +38,8 @@ let (xpcall, unpack) = (xpcall, unpack)
 
 let stderr = io.stderr
 let (write, flush) = (io.write, io.flush)
+
+let (load, loadfile) = (load, loadfile)
 
 let progname = "vortex"
 
@@ -55,15 +59,16 @@ fn sig_interrupt(sig) do
 end
 
 fn print_results(stat, ...) do
-    if not ... -> return nil
+    if not ... -> return stat
     let msg = concat([ ... ], ", ")
     if not stat do
-        stderr:write(msg, "\n")
+        stderr:write(msg, "\n\n")
         stderr:flush()
     end else do
-        write(msg, "\n")
+        write(msg, "\n\n")
         flush()
     end
+    return stat
 end
 /*
 -- strips the REPL debug lines from tracebacks
@@ -75,11 +80,33 @@ end
 */
 
 // SIGINTed xpcall
-fn spcall(f, ...) do
+fn docall(f, ...) do
     signal(SIGINT, sig_interrupt)
     let rets = [ xpcall(f, nil, ...) ]
     signal(SIGINT)
     return unpack(rets)
+end
+
+// runs a file
+fn dofile(fname, ...) do
+    let (f, err) = loadfile(fname)
+    if f -> return print_results(docall(f, ...))
+    else -> return print_results(f, err)
+end
+
+// runs a string
+fn dostring(str, source, ...) do
+    let (f, err) = load(str, source)
+    if f -> return print_results(docall(f, ...))
+    else -> return print_results(f, err)
+end
+
+// requires a library
+fn dolibrary(name) do
+    let (stat, ret) = xpcall(require, nil, name)
+    if stat -> _G[name] = ret
+    else -> return print_results(stat, ret)
+    return stat
 end
 
 fn repl_header() -> print(_VERSION ~ " self-hosted REPL by q66")
@@ -149,7 +176,7 @@ end
 fn interactive_repl() do
     signal(SIGINT) // so that we don't have to press ctrl-c twice
     loop while true -> with (stat, msg) = input_load_line() ->
-        print_results(stat, msg) unless stat else print_results(spcall(stat))
+        print_results(stat, msg) unless stat else print_results(docall(stat))
     write("\n")
     flush()
 end
@@ -161,31 +188,55 @@ usage: $progname [options] [script [args]]
 -i      enter interactive mode after the options are handled
 -l lib  require library 'lib'
 -v      show version information
--E      ignore environment variables
 --      stop handling options
 -       stop handling options and run stdin
 """, 0)
 
+fn doargs(opts) do
+    for i, v in ipairs(opts) -> match v[1] ->
+        | "e" -> if not dostring(v[2], "=(command line)") -> return false
+        | "l" -> if not dolibrary(v[2]) -> return false
+    return true
+end
+
+fn doscript(args) do
+    if args[1] == "-" -> args[1] = nil
+    return dofile(unpack(args))
+end
+
+fn dotty(print_ver) do
+    if print_ver -> repl_header()
+    interactive_repl()
+end
+
 // main entry - has to be protected
-let (stat, err) = pcall(fn argv -> if true do
+let (stat, err) = pcall(fn argv do
     let (stat, opts, args) = pcall(util.getopt, argv, "e:il:vE")
     if not stat do
         print_help(opts)
         return nil
     end
 
-    let (has_e, has_i, has_l, has_v, has_E) = nil
+    let (has_l, has_e, has_i, has_v) = (false, false, false, false)
     for i, v in ipairs(opts) -> match v ->
-        | [ "e", _ ] -> has_e = v
-        | [ "i", _ ] -> has_i = v
-        | [ "l", name ] -> _G[name] = require(name)
-        | [ "v", _ ] -> has_v = v
-        | [ "E", _ ] -> has_E = v
+        | [ "l", _ ] -> has_l = true
+        | [ "e", _ ] -> has_e = true
+        | [ "i", _ ] -> has_i = true
+        | [ "v", _ ] -> has_v = true
 
     if has_v -> repl_header()
+    if has_e or has_l do
+        if not doargs(opts) -> return nil
+    end
 
-    if not has_v -> repl_header()
-    interactive_repl()
+    let script = args[1]
+    if script and not doscript(args) -> return nil
+    if has_i do
+        dotty(not has_v)
+    end else if not script and not has_e and not has_v do
+        if isatty() -> dotty(not has_v)
+        else -> dofile(nil)
+    end
 end, arg)
 if not stat do
     stderr:write(err, "\n")

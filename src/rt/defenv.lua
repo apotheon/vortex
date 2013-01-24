@@ -80,7 +80,7 @@ env.parser   = parser
 
 local pparse, pbuild = parser.parse, parser.build
 local lload, concat = _G.load, table.concat
-env.load = function(ld, src, mode, _env)
+local load = function(ld, src, mode, _env)
     if type(ld) ~= "string" then
         local s = ld()
         if s then
@@ -100,6 +100,16 @@ env.load = function(ld, src, mode, _env)
     stat, ret = pcall(pbuild, ret)
     if not stat then return nil, ret end
     return lload(ret, src, mode, _env or env)
+end
+env.load = load
+
+local io_open = io.open
+env.loadfile = function(fname, mode, _env)
+    local stat, sr = pcall(io_open, fname, "rb")
+    if not stat then return nil, sr end
+    local str = sr:read("*all")
+    sr:close()
+    return load(str, "@" .. fname, mode, _env)
 end
 
 env._L       = _G
