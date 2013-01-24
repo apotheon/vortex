@@ -64,7 +64,7 @@ fn print_results(stat, ...) do
     if not stat do
         stderr:write(msg, "\n\n")
         stderr:flush()
-    end else do
+    else do
         write(msg, "\n\n")
         flush()
     end
@@ -233,7 +233,7 @@ let (stat, err) = pcall(fn argv do
     if script and not doscript(args) -> return nil
     if has_i do
         dotty(not has_v)
-    end else if not script and not has_e and not has_v do
+    else if not script and not has_e and not has_v do
         if isatty() -> dotty(not has_v)
         else -> dofile(nil)
     end

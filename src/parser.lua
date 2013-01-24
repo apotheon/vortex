@@ -2157,17 +2157,22 @@ local parse_enum = function(ls)
     return Enum_Expr(ls, unpack(t))
 end
 
+local parse_do
+
 local parse_if = function(ls)
     push_curline(ls)
     ls:get()
     local cond = parse_expr(ls)
     local tok  = ls.token
 
+    local tval
     if tok.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
+        tval = parse_expr(ls)
+    else
+        tval = parse_do(ls, "else")
     end
-    local tval = parse_expr(ls)
 
     if tok.name == "else" then
         ls:get()
@@ -2391,12 +2396,12 @@ local parse_match = function(ls)
     return Match_Expr(ls, el, unpack(parse_match_body(ls)))
 end
 
-local parse_do = function(ls)
+parse_do = function(ls, ed)
     push_curline(ls)
     ls:get()
     local tok, exprs = ls.token, {}
 
-    if tok.name == ";;" or tok.name == "end" then
+    if tok.name == ";;" or tok.name == "end" or (ed and tok.name == ed) then
         ls:get()
         return Do_Expr(ls)
     end
@@ -2406,13 +2411,16 @@ local parse_do = function(ls)
         exprs[#exprs + 1] = ex
         if tok.name == ";" then
             ls:get()
-        elseif ex:is_ending() or tok.name == ";;" or tok.name == "end" then
+        elseif ex:is_ending() or tok.name == ";;" or tok.name == "end" or
+        (ed and tok.name == ed) then
             break
         end
     end
 
-    assert_tok(ls, ";;", "end")
-    ls:get()
+    if not (ed and tok.name == ed) then
+        assert_tok(ls, ";;", "end")
+        ls:get()
+    end
     return Do_Expr(ls, unpack(exprs))
 end
 
