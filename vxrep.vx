@@ -46,7 +46,7 @@ fn checkc(tbl, v) -> if tbl != v -> v else -> tostr(v)
 // a tiny table serializer :)
 fn rec serialize(tbl) -> match type(tbl) ->
     | "table" -> with ret = map(fn v -> serialize(checkc(tbl, v)), tbl)
-        ++ map(fn v -> "[" ~ serialize(checkc(tbl, v[1])) ~ "] = "
+        ++ map(fn v -> "$(" ~ serialize(checkc(tbl, v[1])) ~ "): "
             ~ serialize(checkc(tbl, v[2])), filter(fn v ->
                 not inarray(tbl, v[1]), items(tbl)))
         -> (#ret > 0) and ("[ " ~ tconc(ret, ", ") ~ " ]") or "[]"
