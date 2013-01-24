@@ -41,6 +41,18 @@ let (write, flush) = (io.write, io.flush)
 
 let (load, loadfile) = (load, loadfile)
 
+fn checkc(tbl, v) -> if tbl != v -> v else -> tostr(v)
+
+// a tiny table serializer :)
+fn rec serialize(tbl) -> match type(tbl) ->
+    | "table" -> with ret = map(fn v -> serialize(checkc(tbl, v)), tbl)
+        ++ map(fn v -> "[" ~ serialize(checkc(tbl, v[1])) ~ "] = "
+            ~ serialize(checkc(tbl, v[2])), filter(fn v ->
+                not inarray(tbl, v[1]), items(tbl)))
+        -> (#ret > 0) and ("[ " ~ tconc(ret, ", ") ~ " ]") or "[]"
+    | "string" -> '"' ~ tostr(tbl) ~ '"'
+    | _ -> tostr(tbl)
+
 let progname = "vortex"
 
 // the SIGINT hook - called when SIGINT is raised
@@ -60,7 +72,7 @@ end
 
 fn print_results(stat, ...) do
     if not ... -> return stat
-    let msg = concat([ ... ], ", ")
+    let msg = concat(map(fn v -> serialize(v), [ ... ]), ", ")
     if not stat do
         stderr:write(msg, "\n\n")
         stderr:flush()

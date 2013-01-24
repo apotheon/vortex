@@ -8,8 +8,10 @@
 
 local M = require("rt.core")
 
+local pairs = pairs
 local ipairs = ipairs
 local pcall = pcall
+local floor = math.floor
 
 local env = {}
 M.__vx_def_env = env
@@ -65,14 +67,33 @@ env.zip = function(a, b)
     end
     return r
 end
-env.isstr  = function(s) return type(s) == "string" end
-env.isnum  = function(n) return type(n) == "number" end
-env.isfun  = function(f) return type(f) == "function" end
-env.isbool = function(b) return type(b) == "boolean" end
-env.isnil  = function(n) return n == nil end
-env.tconc  = _G.table.concat
-env.floor  = math.floor
-env.ceil   = math.ceil
+env.items = function(tbl)
+    local r = {}
+    for k, v in pairs(tbl) do
+        r[#r + 1] = { k, v }
+    end
+    return r
+end
+env.filter = function(fun, tbl)
+    local r = {}
+    for i = 1, #tbl do
+        local v = tbl[i]
+        if fun(v) then r[#r + 1] = v end
+    end
+    return r
+end
+env.isstr   = function(s) return type(s) == "string" end
+env.isnum   = function(n) return type(n) == "number" end
+env.isfun   = function(f) return type(f) == "function" end
+env.isbool  = function(b) return type(b) == "boolean" end
+env.isnil   = function(n) return n == nil end
+env.inarray = function(arr, idx)
+    return ((type(idx) == "number") and floor(idx) == idx
+             and idx >= 1 and idx <= #arr)
+end
+env.tconc   = _G.table.concat
+env.floor   = floor
+env.ceil    = math.ceil
 
 -- the parser
 local parser = M.__vx_parser
