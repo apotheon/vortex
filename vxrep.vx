@@ -149,7 +149,7 @@ end
 
 // the REPL environment - tries to look up unknown variables from locals
 let repl_env = set_mt([], [
-    __index: fn self, n -> _G[n] or locals[n],
+    __index: fn self, n -> locals[n] or _G[n],
     __newindex: fn self, n, v -> _G[n] = v
 ])
 
