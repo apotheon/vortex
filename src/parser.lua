@@ -1032,6 +1032,8 @@ local Variable_Pattern = Expr:clone {
         if kwargs.decl then
             sc:push(gen_local(var))
             return nil
+        elseif kwargs.gdecl then
+            return gen_string(var)
         elseif kwargs.no_local then
             sc:push(gen_ass(var, kwargs.expr))
         else
@@ -1065,6 +1067,14 @@ local Table_Pattern = Expr:clone {
                 self[i][2]:generate(sc, { decl = true })
             end
             return nil
+        elseif kwargs.gdecl then
+            local ret = {}
+            for i = 1, #self do
+                local pt = self[i][2]
+                local s = pt:generate(sc, { gdecl = true })
+                if s then ret[#ret + 1] = s end
+            end
+            return (#ret > 0) and gen_seq(ret) or nil
         elseif kwargs.let then
             local ret = {}
             for i = 1, #self do
@@ -1124,6 +1134,14 @@ local Object_Pattern = Expr:clone {
             end
             sc:push(gen_local(gen_seq(exs)))
             return nil
+        elseif kwargs.gdecl then
+            local ret = {}
+            for i = 1, #self do
+                local pt = self[i][2]
+                local s = pt:generate(sc, { gdecl = true })
+                if s then ret[#ret + 1] = s end
+            end
+            return (#ret > 0) and gen_seq(ret) or nil
         elseif kwargs.let then
             local expr, exs = kwargs.expr, {}
             for i = 1, #self do
@@ -1169,6 +1187,11 @@ local Cons_Pattern = Expr:clone {
             head:generate(sc, { decl = true })
             tail:generate(sc, { decl = true })
             return nil
+        elseif kwargs.gdecl then
+            local ret = { self[1]:generate(sc, { gdecl = true }),
+                          self[2]:generate(sc, { gdecl = true })
+            }
+            return (#ret > 0) and gen_seq(ret) or nil
         elseif kwargs.let then
             local sym = unique_sym("cons")
             local hsym, tsym = sym .. "_h", sym .. "_t"
@@ -1324,6 +1347,16 @@ local Let_Expr = Expr:clone {
         if tp == "rec" then
             for i = 1, plen do
                 ptrns[i]:generate(sc, { decl = true, let = true })
+            end
+        elseif tp == "glob" then
+            local f = get_rt_fun("gdecl")
+            local t = {}
+            for i = 1, plen do
+                local v = ptrns[i]:generate(sc, { gdecl = true })
+                if v then t[#t + 1] = v end
+            end
+            if #t > 0 then
+                sc:push(gen_call(f, gen_seq(t)))
             end
         end
 
@@ -2012,7 +2045,7 @@ local parse_let_with = function(ls, with)
     ls:get()
 
     local ltype
-    if tok.name == "rec" or tok.name == "glob" then
+    if tok.name == "rec" or (not with and tok.name == "glob") then
         ltype = tok.name
         ls:get()
     end

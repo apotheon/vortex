@@ -13,5 +13,6 @@ require "rt.object"
 require "rt.parser"
 require "rt.mod"
 require "rt.defenv"
+require "rt.strict"
 
 return M

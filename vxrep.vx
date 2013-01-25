@@ -148,7 +148,10 @@ fn glob repl_save_var(n, v) do
 end
 
 // the REPL environment - tries to look up unknown variables from locals
-let repl_env = set_mt([], [ __index: fn self, n -> _G[n] or locals[n] ])
+let repl_env = set_mt([], [
+    __index: fn self, n -> _G[n] or locals[n],
+    __newindex: fn self, n, v -> _G[n] = v
+])
 
 // appended to each REPL line; saves the local variables into locals
 // unless they begin with __ (so that temporaries are not saved)
