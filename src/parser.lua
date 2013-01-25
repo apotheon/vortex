@@ -2198,16 +2198,17 @@ local parse_if = function(ls)
     local cond = parse_expr(ls)
     local tok  = ls.token
 
-    local tval
+    local tval, els
     if tok.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
         tval = parse_expr(ls)
+        els = (tok.name == "else")
     else
-        tval = parse_do(ls, "else")
+        tval, els = parse_do(ls, "else")
     end
 
-    if tok.name == "else" then
+    if els then
         ls:get()
         if tok.name == "->" then ls:get() end
         return If_Expr(ls, cond, tval, parse_expr(ls))
@@ -2453,8 +2454,9 @@ parse_do = function(ls, ed)
     if not (ed and tok.name == ed) then
         assert_tok(ls, ";;", "end")
         ls:get()
+        return Do_Expr(ls, unpack(exprs)), false
     end
-    return Do_Expr(ls, unpack(exprs))
+    return Do_Expr(ls, unpack(exprs)), true
 end
 
 local parse_loop = function(ls)

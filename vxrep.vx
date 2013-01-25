@@ -41,6 +41,8 @@ let (write, flush) = (io.write, io.flush)
 
 let (load, loadfile) = (load, loadfile)
 
+let parse = parser.parse
+
 fn checkc(tbl, v) -> if tbl != v -> v else -> tostr(v)
 
 // a tiny table serializer :)
@@ -176,9 +178,16 @@ fn input_load_line() do
     if not let line = input_get_line(1) -> return nil
     let (f, err) = nil
     loop while true do
-        set (f, err) = load(make_input_line(line), "=stdin", nil, repl_env)
-        break unless input_incomplete(err)
-
+        with (stat, ret) = pcall(parse, "stdin", line) do
+            if not stat -> if not input_incomplete(ret) do
+                set (f, err) = (nil, ret)
+                break
+            end else do
+                set (f, err) = load(make_input_line(line),
+                    "=stdin", nil, repl_env)
+                break
+            end
+        end
         return (f, err) unless let ln = input_get_line(2)
         line = line ~ "\n" ~ ln
     end
