@@ -90,7 +90,7 @@ print(e"[ $(tconc(t1, ', ')) ]\n[ $(tconc(qsort(t1), ', ')) ]")</pre>
             including:</p><ul>
                 <li>Everything is an expression [done]</li>
                 <li>Function arguments with default values [done]</li>
-                <li>Chains are expressions [done]</li>
+                <li>Blocks are expressions [done]</li>
                 <li>Builtin syntax for coroutines and generators [not yet]</li>
                 <li>Pattern matching [done]</li>
                 <li>Sequences [done]</li>
@@ -162,19 +162,20 @@ assert(fun(1, 2, 3)[3] == 6)
 // hybrid prototype/class object system with multiple differential inheritance
 // if you're inheriting from Object, you don't specify it
 let Foo = clone ->
-    fn __init(x) -> @x = x;
+    fn __init(x) -> @x = x
     fn boo() -> print("boo!", @x)
-;;
+end
 
 let Bar = clone ->
    fn baa() -> print("baa!", @x)
-;;
+end
 
 let Baz = clone (Foo, Bar) ->
     fn boo() do
-        print("new boo!");
-        Foo.boo(self);;
-;;
+        print("new boo!")
+        Foo.boo(self)
+    end
+end
 
 let inst = new Baz(5)
 inst:boo()
@@ -184,24 +185,29 @@ inst:baa()</pre>
  */
 
 fn partition(lst, l, r, p, fun) -> with pivot = lst[p] do
-    set (lst[p], lst[r]) = (lst[r], lst[p]);
+    set (lst[p], lst[r]) = (lst[r], lst[p])
     for i = l .. r - 1 -> if fun(lst[i], pivot) do
-        set (lst[i], lst[l]) = (lst[l], lst[i]);
-        l += 1;;
-    set (lst[l], lst[r]) = (lst[r], lst[l]);
-    return l;;
+        set (lst[i], lst[l]) = (lst[l], lst[i])
+        l += 1
+    end
+    set (lst[l], lst[r]) = (lst[r], lst[l])
+    return l
+end
 
 fn insort(lst, l = 1, r = #lst, f = fn a, b -> a < b) -> for i = l .. r ->
     with (j, v) = (i, lst[i]) do
         loop while j > 1 and not f(lst[j - 1], v) do
-            lst[j] = lst[j - 1];
-            j -= 1;;
-        lst[j] = v;;
+            lst[j] = lst[j - 1]
+            j -= 1
+        end
+        lst[j] = v
+    end
 
 fn rec qsort(lst, l = 1, r = #lst, f = fn a, b -> a < b) -> if (r - l) > 10 ->
     with pi = partition(lst, l, r, floor((l + r) / 2), f) do
-        qsort(lst, l, pi - 1, f);
-        qsort(lst, pi + 1, r, f);;
+        qsort(lst, l, pi - 1, f)
+        qsort(lst, pi + 1, r, f)
+    end
 else insort(lst, l, r, f)
 
 let t1 = [ 5, 10, 36, 24, 18, 7, 1, 3, 13, 27, 84 ]

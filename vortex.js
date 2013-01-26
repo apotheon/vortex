@@ -16,6 +16,7 @@ var keywords = {
     "cycle"  : "kw1",
     "do"     : "kw1",
     "else"   : "kw1",
+    "end"    : "kw1",
     "enum"   : "kw1",
     "false"  : "kw3",
     "fn"     : "kw1",
