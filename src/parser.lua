@@ -1654,6 +1654,18 @@ local Seq_Expr = Expr:clone {
 }
 M.Seq_Expr = Seq_Expr
 
+-- { callable, expr }
+local Coro_Expr = Expr:clone {
+    name = "Coro_Expr",
+    __init = gen_ctor(2),
+
+    generate = function(self, sc, kwargs)
+        return gen_call(get_rt_fun(self[1] and "coro_wrap" or "coro_create"),
+            self[2]:generate(sc, {}))
+    end
+}
+M.Coro_Expr = Coro_Expr
+
 -- { expr }
 local Quote_Expr = Expr:clone {
     name = "Quote_Expr",
@@ -2037,6 +2049,29 @@ local parse_function = function(ls, obj)
         end
     end
     return fnexpr
+end
+
+local parse_coro_cfn = function(ls)
+    local tok = ls.token
+    local callable = tok.name == "cfn"
+    push_curline(ls)
+    ls:get()
+
+    local body
+    if tok.name == "->" then
+        ls:get()
+        body = parse_expr(ls)
+    else
+        push_curline(ls)
+        local ids, defs = parse_arglist(ls)
+        if tok.name ~= "do" then
+            assert_tok(ls, "->")
+            ls:get()
+        end
+        body = Function_Expr(ls, ids, defs, parse_expr(ls))
+    end
+
+    return Coro_Expr(ls, callable, body)
 end
 
 local parse_let_with = function(ls, with)
@@ -2836,6 +2871,8 @@ parse_simpleexpr = function(ls)
 
     if name == "fn" then
         return parse_function(ls)
+    elseif name == "coro" or name == "cfn" then
+        return parse_coro_cfn(ls)
     elseif name == "let" then
         return parse_let_with(ls)
     elseif name == "set" then
