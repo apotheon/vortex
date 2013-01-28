@@ -94,6 +94,7 @@ end
 env.tconc   = _G.table.concat
 env.floor   = floor
 env.ceil    = math.ceil
+env.resume  = M.__vx_coro_resume
 
 -- the parser
 local parser = M.__vx_parser
