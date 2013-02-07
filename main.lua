@@ -4,7 +4,7 @@
  Available under the terms of the MIT license.
 ]]
 
-package.path = package.path .. ";./src/?.lua"
+package.path = package.path .. ";./src/?.lua;./src/?/init.lua"
 
 local util   = require("util")
 local parser = require("parser")

@@ -44,6 +44,7 @@ local keywords = {
     ["in"     ] = true,
     ["let"    ] = true,
     ["loop"   ] = true,
+    ["macro"  ] = true,
     ["match"  ] = true,
     ["module" ] = true,
     ["new"    ] = true,
@@ -353,9 +354,9 @@ lex = function(ls, instr)
             next_char(ls)
             lvl = lvl - 1
             yield(")")
-        -- =, ==, >, >=, <, <=, !, !=, %, %=
+        -- =, ==, >, >=, <, <=, !, !=, %, %=, ~, ~=
         elseif curr == "=" or curr == ">" or curr == "<" or curr == "!"
-        or curr == "%" then
+        or curr == "%" or curr == "~" then
             next_char(ls)
             if ls.current == "=" then
                 next_char(ls)

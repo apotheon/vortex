@@ -5,4 +5,8 @@
 ]]
 
 package.path = package.path .. ";./src/?.lua;./src/?/init.lua"
-return require "rt"
+local rt = require "rt"
+-- set only here - in "standalone" rt loader; for macro
+-- expansion and so on, it's done from inside the compiler
+rt.__vx_env_set(3, rt.__vx_def_env)
+return rt

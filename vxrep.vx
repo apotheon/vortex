@@ -1,4 +1,4 @@
-/* vxrepl.lua - a Vortex interpreter and REPL
+/* vxrepl.vx - a Vortex interpreter and REPL
  * Provides interactive console, script running and offline compilation
  *
  * Copyright (C) 2013 Daniel "q66" Kolesa <quaker66@gmail.com>

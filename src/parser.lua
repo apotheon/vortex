@@ -44,8 +44,8 @@ local Unary_Ops = {
 
 local Ass_Ops = {
     ["="  ] = true, ["+=" ] = true, ["-=" ] = true, ["*=" ] = true,
-    ["/=" ] = true, ["%=" ] = true, ["++="] = true, ["::="] = true,
-    ["**="] = true,
+    ["/=" ] = true, ["%=" ] = true, ["~=" ] = true, ["++="] = true,
+    ["::="] = true, ["**="] = true,
 
     ["band="] = true, ["bor="] = true, ["bxor="] = true,
     ["asr=" ] = true, ["bsr="] = true, ["bsl=" ] = true,
@@ -2698,6 +2698,8 @@ end
 local parse_binexpr
 local parse_simpleexpr
 
+local macro_expand
+
 parse_primaryexpr = function(ls)
     local tok = ls.token
     local tn = tok.name
@@ -2734,7 +2736,17 @@ parse_primaryexpr = function(ls)
         push_curline(ls)
         local v = tok.value
         ls:get()
-        return Symbol_Expr(ls, v)
+        if tok.name == "!" then
+            ls:get()
+            assert_tok(ls, "(")
+            ls:get()
+            local lst = parse_exprlist(ls)
+            assert_tok(ls, ")")
+            ls:get()
+            return macro_expand(ls, v, unpack(lst))
+        else
+            return Symbol_Expr(ls, v)
+        end
     elseif tn == "<number>" then
         push_curline(ls)
         local v = tok.value
@@ -3003,6 +3015,32 @@ parse_expr = function(ls)
     return parse_condexpr(ls)
 end
 
+local macros = {}
+macro_expand = function(ls, name, ...)
+end
+
+local parse_macro = function(ls)
+    local tok = ls.token
+    push_curline(ls)
+    ls:get()
+
+    assert_tok(ls, "<ident>")
+    local name = tok.value
+    ls:get()
+    assert_tok(ls, "(")
+    ls:get()
+    local args = parse_identlist(ls)
+    assert_tok(ls, ")")
+    ls:get()
+
+    if tok.name ~= "do" then
+        assert_tok(ls, "->")
+        ls:get()
+    end
+
+    macros[name] = { args, parse_expr(ls) }
+end
+
 local parse = function(fname, reader)
     if not reader then
         local str = fname
@@ -3018,6 +3056,10 @@ local parse = function(fname, reader)
     local ast, tok = {}, ls.token
     if tok.name ~= "<eos>" then
         while true do
+            -- macros are only allowed in the main scope
+            while tok.name == "macro" do
+                parse_macro(ls)
+            end
             local ex = parse_expr(ls)
             ast[#ast + 1] = ex
             if tok.name == "<eos>" then
