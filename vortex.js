@@ -258,6 +258,7 @@ function process_syntax(text) {
                 newstr += text[i];
                 ++i;
             }
+            --i;
             newstr += "</span>";
         } else {
             if (is_idkw(curr)) {
