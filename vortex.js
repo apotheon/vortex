@@ -27,6 +27,7 @@ var keywords = {
     "in"     : "kw2",
     "let"    : "kw1",
     "loop"   : "kw1",
+    "macro"  : "kw1",
     "match"  : "kw1",
     "module" : "kw1",
     "new"    : "kw1",
@@ -61,16 +62,25 @@ function process_syntax(text) {
         return "<span class=\"" + cl + "\">" + input + "</span>";
     };
     var is_alnum = function(c) {
+        if (c == null || c == undefined) {
+            return false;
+        }
         var ascii = c.charCodeAt(0);
         return ((ascii >= 48 && ascii <= 57)
              || (ascii >= 65 && ascii <= 90)
              || (ascii >= 97 && ascii <= 122));
     };
     var is_digit = function(c) {
+        if (c == null || c == undefined) {
+            return false;
+        }
         var ascii = c.charCodeAt(0);
         return (ascii >= 48 && ascii <= 57);
     };
     var is_idkw = function(c) {
+        if (c == null || c == undefined) {
+            return false;
+        }
         var ascii = c.charCodeAt(0);
         /* allow : here for method calls */
         return (c == "_" || c == "#" || c == "@" || c == ":"

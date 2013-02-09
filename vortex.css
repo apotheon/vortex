@@ -29,6 +29,17 @@ body {
     text-align: center;
 }
 
+#main-high {
+    line-height: 1.5;
+    margin: 0;
+    margin-left: 1em;
+    margin-right: 1em;
+    background: #CCCCCC;
+    -moz-box-shadow:    0 0 6px 6px #222222;
+    -webkit-box-shadow: 0 0 6px 6px #222222;
+    box-shadow:         0 0 6px 6px #222222;
+}
+
 #repl {
     position: fixed;
     top: 1.5em;
