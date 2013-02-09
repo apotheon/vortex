@@ -4,4 +4,4 @@
  Available under the terms of the MIT license.
 ]]
 
-require("rt.core").__vx_parser = require("parser")
+require("rt.core").__vx_parser = _G["rt_parser"] or require("parser")

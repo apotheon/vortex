@@ -1,7 +1,10 @@
-local lexer   = require("lexer")
-local util    = require("util")
+local lexer = require("lexer")
+local util  = require("util")
 
 local M = {}
+_G["rt_parser"] = M
+local vxrt = require("rt")
+_G["rt_parser"] = nil
 
 -- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
@@ -1687,10 +1690,7 @@ local Unquote_Expr = Expr:clone {
     end,
 
     to_lua = function(self, sc, kwargs)
-        local slf = get_rt_fun("parser")
-        return gen_index(slf, gen_string("Value_Expr")) .. "("
-            .. serialize(self.dinfo) .. ", "
-            .. self[1]:generate(sc, kwargs) .. ")"
+        return self[1]:generate(sc, kwargs)
     end
 }
 M.Unquote_Expr = Unquote_Expr
@@ -1780,6 +1780,7 @@ local parse_expr
 local parse_exprlist
 local parse_pattern_list
 local parse_pattern
+local parse_primaryexpr
 
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
@@ -2175,25 +2176,29 @@ end
 local parse_quote = function(ls)
     push_curline(ls)
     ls:get()
+    local tok = ls.token
 
-    if ls.token.name ~= "do" then
-        assert_tok(ls, "->")
-        ls:get()
+    local ex
+    if tok.name == "do" then
+        ex = parse_expr(ls)
+    else
+        ex = parse_primaryexpr(ls)
     end
-
-    return Quote_Expr(ls, parse_expr(ls))
+    return Quote_Expr(ls, ex)
 end
 
 local parse_unquote = function(ls)
     push_curline(ls)
     ls:get()
+    local tok = ls.token
 
-    if ls.token.name ~= "do" then
-        assert_tok(ls, "->")
-        ls:get()
+    local ex
+    if tok.name == "do" then
+        ex = parse_expr(ls)
+    else
+        ex = parse_primaryexpr(ls)
     end
-
-    return Unquote_Expr(ls, parse_expr(ls))
+    return Unquote_Expr(ls, ex)
 end
 
 local parse_enum = function(ls)
@@ -2317,8 +2322,6 @@ local Pattern_Ops = {
     ["or"] = { 1, 1, Or_Pattern }, ["and"] = { 2, 2, And_Pattern },
     ["::"] = { 4, 3, Cons_Pattern }
 }
-
-local parse_primaryexpr
 
 local parse_suffixedpattern
 local parse_primarypattern = function(ls, let)
@@ -2575,7 +2578,7 @@ local parse_result = function(ls)
         ls:get()
         return Result_Expr(ls, unpack(exprs))
     end
-    return Result_Expr(ls, parse_expr(ls))
+    return Result_Expr(ls, parse_primaryexpr(ls))
 end
 
 local parse_return = function(ls)
@@ -2588,7 +2591,7 @@ local parse_return = function(ls)
         ls:get()
         return Return_Expr(ls, unpack(exprs))
     end
-    return Return_Expr(ls, parse_expr(ls))
+    return Return_Expr(ls, parse_primaryexpr(ls))
 end
 
 local parse_yield = function(ls)
@@ -2601,7 +2604,7 @@ local parse_yield = function(ls)
         ls:get()
         return Yield_Expr(ls, unpack(exprs))
     end
-    return Yield_Expr(ls, parse_expr(ls))
+    return Yield_Expr(ls, parse_primaryexpr(ls))
 end
 
 local parse_object = function(ls)
@@ -3015,8 +3018,42 @@ parse_expr = function(ls)
     return parse_condexpr(ls)
 end
 
+local build
+
 local macros = {}
 macro_expand = function(ls, name, ...)
+    local mcr = macros[name]
+    local body = mcr[2]
+
+    local rtcache = {}
+    local hdr = {}
+    get_rt_fun = function(name)
+        local n = rtcache[name]
+        if not n then
+            local sym = unique_sym("rtfn")
+            hdr[#hdr + 1] = gen_local(sym, "_R.__vx_" .. name)
+            rtcache[name] = sym
+            return sym
+        end
+        return n
+    end
+
+    local fs = new_fn_scope(Scope)
+    if body:is_a(Do_Expr) then
+        body:generate(fs, {
+            no_scope = true, return_val = true
+        })
+    else
+        local ret = body:generate(fs, {
+            return_val = true
+        })
+        if ret then fs:push(gen_ret(ret)) end
+    end
+    local funstr = concat(hdr, "\n") .. "\nreturn "
+        .. gen_fun(gen_seq(mcr[1]), fs)
+
+    local f = load(funstr, nil, nil, vxrt.__vx_def_env)()
+    return f(...)
 end
 
 local parse_macro = function(ls)
@@ -3081,14 +3118,14 @@ local parse = function(fname, reader)
 end
 M.parse = parse
 
-local build = function(ast)
+build = function(ast, nort)
     --util.randomseed(os.clock() * os.time())
 
     local ms = new_scope(Scope, nil, true)
     ms.data = {}
 
     local rts = unique_sym("rt")
-    local hdr = { gen_local(rts, gen_require("rt_init")) }
+    local hdr = { gen_local(rts, nort and "_G" or gen_require("rt_init")) }
     local rtcache = {}
     get_rt_fun = function(name)
         local n = rtcache[name]
