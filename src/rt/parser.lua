@@ -4,4 +4,11 @@
  Available under the terms of the MIT license.
 ]]
 
-require("rt.core").__vx_parser = _G["rt_parser"] or require("parser")
+if _G["rt_parser"] then
+    require("rt.core").__vx_parser = _G["rt_parser"]
+else
+    local core = require("rt.core")
+    _G["rt_core"] = core
+    core.__vx_parser = require("parser")
+    _G["rt_core"] = nil
+end

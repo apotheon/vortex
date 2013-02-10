@@ -2,9 +2,13 @@ local lexer = require("lexer")
 local util  = require("util")
 
 local M = {}
-_G["rt_parser"] = M
-local vxrt = require("rt")
-_G["rt_parser"] = nil
+
+local vxrt = _G["rt_core"]
+if not vxrt then
+    _G["rt_parser"] = M
+    vxrt = require("rt")
+    _G["rt_parser"] = nil
+end
 
 -- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
@@ -1781,6 +1785,7 @@ local parse_exprlist
 local parse_pattern_list
 local parse_pattern
 local parse_primaryexpr
+local parse_suffixedexpr
 
 local parse_identlist = function(ls)
     local tok, ids = ls.token, {}
@@ -2182,7 +2187,7 @@ local parse_quote = function(ls)
     if tok.name == "do" then
         ex = parse_expr(ls)
     else
-        ex = parse_primaryexpr(ls)
+        ex = parse_suffixedexpr(ls)
     end
     return Quote_Expr(ls, ex)
 end
@@ -2196,7 +2201,7 @@ local parse_unquote = function(ls)
     if tok.name == "do" then
         ex = parse_expr(ls)
     else
-        ex = parse_primaryexpr(ls)
+        ex = parse_suffixedexpr(ls)
     end
     return Unquote_Expr(ls, ex)
 end
@@ -2578,7 +2583,7 @@ local parse_result = function(ls)
         ls:get()
         return Result_Expr(ls, unpack(exprs))
     end
-    return Result_Expr(ls, parse_primaryexpr(ls))
+    return Result_Expr(ls, parse_suffixedexpr(ls))
 end
 
 local parse_return = function(ls)
@@ -2591,7 +2596,7 @@ local parse_return = function(ls)
         ls:get()
         return Return_Expr(ls, unpack(exprs))
     end
-    return Return_Expr(ls, parse_primaryexpr(ls))
+    return Return_Expr(ls, parse_suffixedexpr(ls))
 end
 
 local parse_yield = function(ls)
@@ -2604,7 +2609,7 @@ local parse_yield = function(ls)
         ls:get()
         return Yield_Expr(ls, unpack(exprs))
     end
-    return Yield_Expr(ls, parse_primaryexpr(ls))
+    return Yield_Expr(ls, parse_suffixedexpr(ls))
 end
 
 local parse_object = function(ls)
@@ -2816,7 +2821,6 @@ parse_primaryexpr = function(ls)
     end
 end
 
-local parse_suffixedexpr
 parse_suffixedexpr = function(ls)
     local tok = ls.token
 
@@ -3083,6 +3087,8 @@ local parse = function(fname, reader)
         local str = fname
         fname  = '[string \"' .. fname:match("[^\r\n]*"):sub(1, 63) .. '"]'
         reader = util.string_stream(str)
+    elseif type(reader) == "string" then
+        reader = util.string_stream(reader)
     end
     local ls = lexer.init(fname, reader)
     ls.ndstack, ls.fnstack, ls.lpstack = Stack(), Stack(), Stack()
