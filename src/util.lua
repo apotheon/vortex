@@ -224,7 +224,7 @@ serialize = function(tbl, pretty, indent, simp)
         return "{" .. table.concat(ret, ",") .. "}"
     end
 
-    if not tbl then return "nil" end
+    if tbl == nil then return "nil" end
 
     local t = type(tbl)
 
