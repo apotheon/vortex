@@ -84,19 +84,18 @@ fn print_results(stat, ...) do
     end
     return stat
 end
-/*
--- strips the REPL debug lines from tracebacks
-local repl_traceback = function(msg)
+
+// strip away the REPL debug lines
+fn repl_traceback(msg) do
     msg = traceback(msg, 2)
-    return msg:match("^(.*stdin:%d: in main chunk).*$")
-        or msg or "(no error message)"
+    return (string["match"](msg, "^(.*stdin:%d: in main chunk).*$")
+        or msg or "(no error message)")
 end
-*/
 
 // SIGINTed xpcall
 fn docall(f, ...) do
     signal(SIGINT, sig_interrupt)
-    let rets = [ xpcall(f, nil, ...) ]
+    let rets = [ xpcall(f, repl_traceback, ...) ]
     signal(SIGINT)
     return unpack(rets)
 end
@@ -117,7 +116,7 @@ end
 
 // requires a library
 fn dolibrary(name) do
-    let (stat, ret) = xpcall(require, nil, name)
+    let (stat, ret) = xpcall(require, repl_traceback, name)
     if stat -> _G[name] = ret
     else -> return print_results(stat, ret)
     return stat
