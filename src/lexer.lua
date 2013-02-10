@@ -145,24 +145,20 @@ read_long_comment = function(ls)
                 next_char(ls)
                 read_long_comment(ls)
             end
-        end
-
         -- follow newlines for proper debug info
-        if is_newline(ls.current) then
+        elseif is_newline(ls.current) then
             next_line(ls)
-        end
-
         -- end comments if required
-        if ls.current == "*" then
+        elseif ls.current == "*" then
             next_char(ls)
             if ls.current == "/" then
                 next_char(ls)
                 finished = true
                 break
             end
+        else
+            next_char(ls)
         end
-
-        next_char(ls)
     end
     -- here we should have the token right after the comment ready
     if not finished then

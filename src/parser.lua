@@ -1812,8 +1812,7 @@ local endargs = { ["<ident>"] = true, ["..."] = true }
 local parse_arglist = function(ls, first)
     local tok = ls.token
     local tn  = tok.name
-
-    if tn == "->" or tn == "do" or tn ~= "<ident>" then
+    if tn == "->" or tn == "do" or (tn ~= "<ident>" and tn ~= "...") then
         return { first }, {}
     end
 
