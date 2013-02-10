@@ -3120,7 +3120,10 @@ build = function(ast, nort)
     ms.data = {}
 
     local rts = unique_sym("rt")
-    local hdr = { gen_local(rts, nort and "_G" or gen_require("rt_init")) }
+    local hdr = {
+        gen_local(rts, nort and "_R" or gen_require("rt_init")),
+        (not nort) and gen_require("vxrt") or nil
+    }
     local rtcache = {}
     get_rt_fun = function(name)
         local n = rtcache[name]

@@ -18,8 +18,9 @@ local parse, build = M.__vx_parser.parse, M.__vx_parser.build
 local ifstream = util.file_istream
 
 -- Vortex is separate from Lua
-package.vxpath = "./?.vx"
+package.vxpath = "./?.vx;./vxrt/?.vx;./?/init.vx"
 
+local env = M.__vx_def_env
 table.insert(package.searchers, 2, function(modname)
     local path, err = spath(modname, package.vxpath)
     if not path then return err end
@@ -27,13 +28,12 @@ table.insert(package.searchers, 2, function(modname)
     if file then
         local st = ifstream(file)
         io_close(file)
-
         local stat, ret = vxpcall(parse, path, st)
         if not stat then return ret end
-        stat, ret = vxpcall(build, ret)
+        stat, ret = vxpcall(build, ret, true)
         if not stat then return ret end
 
-        local f, err = load(ret, "@" .. path)
+        local f, err = load(ret, "@" .. path, nil, env)
         return f or err
     end
 end)

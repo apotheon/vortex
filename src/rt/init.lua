@@ -11,8 +11,7 @@ require "rt.list"
 require "rt.seq"
 require "rt.object"
 require "rt.parser"
-require "rt.mod"
 require "rt.defenv"
-require "rt.strict"
+require "rt.mod"
 
 return M

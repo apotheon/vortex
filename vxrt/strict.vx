@@ -1,0 +1,49 @@
+/* strict.vx - Vortex strict global mode
+ *
+ * Copyright (C) 2013 Daniel "q66" Kolesa <quaker66@gmail.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+let (rawget, rawset) = (raw_get, raw_set)
+let (getinfo, error, select) = (debug.getinfo, error, select)
+
+let mt = []
+set_mt(_G, mt)
+
+mt.__gdecl = []
+fn what() -> with info = getinfo(3, "S") -> (info.what when info else "C")
+
+fn mt:__newindex(n, v) do
+    if not mt.__gdecl[n] do
+        if what() != "C" ->
+            error("assignment to undeclared variable '" ~ n ~ "'")
+        mt.__gdecl[n] = true
+    end
+    rawset(self, n, v)
+end
+
+fn mt:__index(n) do
+    if not mt.__gdecl[n] and what() != "C" ->
+        error("access to undeclared variable '" ~ n ~ "'")
+    return rawget(self, n)
+end
+
+fn _R.__vx_gdecl(...) -> with gdecl = mt.__gdecl ->
+    for i = 1 .. select("#", ...) -> gdecl[select(i, ...)] = true
