@@ -22,26 +22,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-let require = require
-
 let cutil = require("vxutil")
 let util  = require("src.util")
-
-let (signal, SIGINT) = (cutil.signal, cutil.SIGINT)
-let (readline, add_history, isatty)
-    = (cutil.readline, cutil.add_history, cutil.isatty)
-
-let (error, sethook, traceback) = (error, debug.sethook, debug.traceback)
-let concat = tconc
-
-let (xpcall, unpack) = (xpcall, unpack)
-
-let stderr = io.stderr
-let (write, flush) = (io.write, io.flush)
-
-let (load, loadfile) = (load, loadfile)
-
-let parse = parser.parse
 
 fn checkc(tbl, v) -> if tbl != v -> v else -> tostr(v)
 
@@ -60,7 +42,7 @@ let progname = "vortex"
 // the SIGINT hook - called when SIGINT is raised
 // makes sure to reset the hook and error appropriately
 fn hook_interrupt() do
-    sethook()
+    debug.sethook()
     error("interrupted!", 3)
 end
 
@@ -68,35 +50,35 @@ end
 // and activates hook_interrupt above
 // used to handle ctrl-c on infinite loops etc.
 fn sig_interrupt(sig) do
-    signal(sig)
-    sethook(hook_interrupt, "crl", 1)
+    cutil.signal(sig)
+    debug.sethook(hook_interrupt, "crl", 1)
 end
 
 fn print_results(stat, ...) do
     if not ... -> return stat
-    let msg = concat(map(fn v -> serialize(v), [ ... ]), ", ")
+    let msg = tconc(map(fn v -> serialize(v), [ ... ]), ", ")
     if not stat do
-        stderr:write(msg, "\n\n")
-        stderr:flush()
+        io.stderr:write(msg, "\n\n")
+        io.stderr:flush()
     else do
-        write(msg, "\n\n")
-        flush()
+        io.write(msg, "\n\n")
+        io.flush()
     end
     return stat
 end
 
 // strip away the REPL debug lines
 fn repl_traceback(msg) do
-    msg = traceback(msg, 2)
+    msg = debug.traceback(msg, 2)
     return (string["match"](msg, "^(.*stdin:%d: in main chunk).*$")
         or msg or "(no error message)")
 end
 
 // SIGINTed xpcall
 fn docall(f, ...) do
-    signal(SIGINT, sig_interrupt)
+    cutil.signal(cutil.SIGINT, sig_interrupt)
     let rets = [ xpcall(f, repl_traceback, ...) ]
-    signal(SIGINT)
+    cutil.signal(cutil.SIGINT)
     return unpack(rets)
 end
 
@@ -131,7 +113,7 @@ fn input_incomplete(msg) -> msg and string["match"](msg, "^.*<eos>'") != nil
 
 // gets a new line from stdin, uses readline if available
 // if the line starts with =, it interprets it as a return
-fn input_get_line(n) -> with line = readline(get_prompt(n)) do
+fn input_get_line(n) -> with line = cutil.readline(get_prompt(n)) do
     if not line -> return nil
     let ln = #line
 
@@ -177,7 +159,7 @@ fn input_load_line() do
     if not let line = input_get_line(1) -> return nil
     let (f, err) = nil
     loop while true do
-        with (stat, ret) = pcall(parse, "stdin", line) do
+        with (stat, ret) = pcall(parser.parse, "stdin", line) do
             if not stat -> if not input_incomplete(ret) do
                 set (f, err) = (nil, ret)
                 break
@@ -190,18 +172,18 @@ fn input_load_line() do
         return (f, err) unless let ln = input_get_line(2)
         line = line ~ "\n" ~ ln
     end
-    if #line > 0 -> add_history(line)
+    if #line > 0 -> cutil.add_history(line)
     return (f, err)
 end
 
 // the interactive REPL loop - loads a line and either reports
 // the error or calls the function and reports the status.
 fn interactive_repl() do
-    signal(SIGINT) // so that we don't have to press ctrl-c twice
+    cutil.signal(cutil.SIGINT) // so that we don't have to press ctrl-c twice
     loop while true -> with (stat, msg) = input_load_line() ->
         print_results(stat, msg) unless stat else print_results(docall(stat))
-    write("\n")
-    flush()
+    io.write("\n")
+    io.flush()
 end
 
 fn print_help(msg) -> error(e"""
@@ -257,11 +239,11 @@ let (stat, err) = pcall(fn argv do
     if has_i do
         dotty(not has_v)
     else if not script and not has_e and not has_v do
-        if isatty() -> dotty(not has_v)
+        if cutil.isatty() -> dotty(not has_v)
         else -> dofile(nil)
     end
 end, arg)
 if not stat do
-    stderr:write(err, "\n")
-    stderr:flush()
+    io.stderr:write(err, "\n")
+    io.stderr:flush()
 end
