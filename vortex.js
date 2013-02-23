@@ -41,7 +41,6 @@ var keywords = {
     "seq"    : "kw1",
     "set"    : "kw1",
     "true"   : "kw3",
-    "unless" : "kw1",
     "unquote": "kw1",
     "when"   : "kw1",
     "while"  : "kw1",
