@@ -131,7 +131,7 @@ It tries to be just documentation, not a tutorial. For a tutorial, check out oth
 \subsection{Disclaimer}
 Vortex is still in heavy development. This document will change as the language changes -- do not use it in production. While the basic idea and style is given, language features may appear, change and vanish. The implementation may not reflect the actual state of the language. Some features described here are not yet implemented at the time of writing. Unimplemented features will be clearly marked as such in their section headers.
 \subsection{Conventions}
-The formal grammar of Vortex specified here is written using an extended dialect of BNF. The BNF strings may contain \verb|regexes|. Example code is written using \verb|monospace| blocks. Character ranges may be used for obvious things, such as \verb|a-Z| or \verb|0-9|.
+The formal grammar of Vortex specified here is written using an extended dialect of BNF. The BNF strings may contain \verb|/regexes/|. Example code is written using \verb|monospace| blocks. Character ranges may be used for obvious things, such as \verb|a-Z| or \verb|0-9|.
 
 \section{Lexical}
 Vortex utilizes a fully free form syntax. Whitespace of any form is ignored, used only to delimit tokens where it would otherwise be ambiguous.
@@ -148,8 +148,9 @@ whitespace ::= ' ' | '\n' | '\r' | '\t' | '\f' | '\v'
 \end{lstlisting}
 The Vortex lexer does not care about whitespace for anything else than token separation. Whitespace is not needed to separate tokens; the source is simply read character by character and when a token ending is found, it just goes on to the next one. The BNF above shows all possible forms of whitespace in Vortex. As you can see, newlines are treated as regular whitespace as well (with the exception of incrementing the line number). Newline and carriage return can be used in pairs no matter what order (handles the common cases '\textbackslash n' and '\textbackslash r\textbackslash n' plus '\textbackslash n\textbackslash r' for rare platforms).
 \subsection{Comments}
-\begin{lstlisting}[language=bnf]
-comment ::= '//' /.*$/ | '/*' { /./ | comment } '*/'
+% ugly textcolor hack to make some editors happy with escaped $
+\begin{lstlisting}[language=bnf,mathescape]
+    comment ::= '//' /.*$\textcolor{string}{\$}$/ | '/*' { /./ | comment } '*/'
 \end{lstlisting}
 Vortex uses C(++) style comments. Short comments comment out everything until the end of the line. Long comment can span multiple lines and are enclosed between delimiters. Unlike C(++), Vortex allows for nesting of comments (thus it requires you to keep them balenced). Comments do not get past lexical analysis.
 \subsection{Identifiers}
