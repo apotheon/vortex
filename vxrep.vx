@@ -118,8 +118,8 @@ fn input_get_line(n) -> with line = cutil.readline(get_prompt(n)) do
     let ln = #line
 
     if line:sub(ln) == "\n" -> line = line:sub(1, ln - 1)
-    return (line unless (n == 1 and line:sub(1, 1) == "=")
-        else ("return " ~ line:sub(2)))
+    return (if n == 1 and line:sub(1, 1) == "=" ->
+        ("return " ~ line:sub(2)) else line)
 end
 
 // stores "saved" locals (handled in each loaded chunk)
@@ -150,8 +150,8 @@ loop while true do
 end
 """
 
-fn make_input_line(str) -> (str ~ localsave_str)
-    unless (not str or str == "") else str
+fn make_input_line(str) -> if (not str or str == "") -> str
+    else (str ~ localsave_str)
 
 // loads a line, returning a function on success
 // and a nil + an error message on failure
@@ -169,7 +169,7 @@ fn input_load_line() do
                 break
             end
         end
-        return (f, err) unless let ln = input_get_line(2)
+        if not let ln = input_get_line(2) -> return (f, err)
         line = line ~ "\n" ~ ln
     end
     if #line > 0 -> cutil.add_history(line)
@@ -181,7 +181,7 @@ end
 fn interactive_repl() do
     cutil.signal(cutil.SIGINT) // so that we don't have to press ctrl-c twice
     loop while true -> with (stat, msg) = input_load_line() ->
-        print_results(stat, msg) unless stat else print_results(docall(stat))
+        if stat -> print_results(docall(stat)) else print_results(stat, msg)
     io.write("\n")
     io.flush()
 end

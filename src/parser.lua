@@ -966,21 +966,6 @@ local When_Pattern = Expr:clone {
 }
 M.When_Pattern = When_Pattern
 
--- { cond, pattern }
-local Unless_Pattern = Expr:clone {
-    name = "Unless_Pattern",
-    __init = gen_ctor(2),
-
-    generate = function(self, sc, kwargs)
-        local v = self[2]:generate(sc, kwargs)
-        local ts = new_scope(sc)
-        ts:push(gen_goto(kwargs.next_arm))
-        sc:push(gen_if(self[1]:generate(sc, {}), ts))
-        return v
-    end
-}
-M.Unless_Pattern = Unless_Pattern
-
 -- { name, pattern }
 local As_Pattern = Expr:clone {
     name = "When_Pattern",
@@ -2338,7 +2323,7 @@ local parse_primarypattern = function(ls, let)
             syntax_error(ls, "missing ')'")
         end
         ls:get()
-        -- cons pattern is a binary pattern, but it can have when/unless/as
+        -- cons pattern is a binary pattern, but it can have when/as
         -- too, so handle it here (only when in parens, we don't want any
         -- ambiguity)
         if pt:is_a(Cons_Pattern) then
@@ -2388,16 +2373,12 @@ end
 parse_suffixedpattern = function(ls, let, pt)
     local tok = ls.token
     local pat = pt or parse_primarypattern(ls, let)
-    local hasas, haswhen, hasunless = false, false, false
+    local hasas, haswhen = false, false
     while true do
         if tok.name == "when" and not haswhen and not let then
             push_curline(ls)
             ls:get()
             pat, haswhen = When_Pattern(ls, parse_expr(ls), pat), true
-        elseif tok.name == "unless" and not hasunless and not let then
-            push_curline(ls)
-            ls:get()
-            pat, hasunless = Unless_Pattern(ls, parse_expr(ls), pat), true
         elseif tok.name == "as" and not hasas then
             push_curline(ls)
             ls:get()
@@ -2949,37 +2930,6 @@ parse_simpleexpr = function(ls)
     end
 end
 
-local parse_condexpr = function(ls)
-    local tok = ls.token
-
-    local exp = parse_binexpr(ls)
-    while true do
-        if tok.name == "unless" then
-            push_curline(ls)
-            ls:get()
-            local cond = parse_expr(ls)
-            local fexpr
-            if tok.name == "else" then
-                ls:get()
-                fexpr = parse_expr(ls)
-            end
-            exp = If_Expr(ls, Unary_Expr(nil, "not", cond), exp, fexpr)
-        elseif tok.name == "when" then
-            push_curline(ls)
-            ls:get()
-            local cond = parse_expr(ls)
-            local fexpr
-            if tok.name == "else" then
-                ls:get()
-                fexpr = parse_expr(ls)
-            end
-            exp = If_Expr(ls, cond, exp, fexpr)
-        else
-            return exp
-        end
-    end
-end
-
 parse_binexpr = function(ls, mp)
     local curr, tok = ls.ndstack, ls.token
     local len = #curr
@@ -3008,7 +2958,7 @@ parse_binexpr = function(ls, mp)
 end
 
 parse_expr = function(ls)
-    return parse_condexpr(ls)
+    return parse_binexpr(ls)
 end
 
 local build

@@ -59,7 +59,6 @@ local keywords = {
     ["seq"    ] = true,
     ["set"    ] = true,
     ["true"   ] = true,
-    ["unless" ] = true,
     ["unquote"] = true,
     ["when"   ] = true,
     ["while"  ] = true,

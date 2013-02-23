@@ -28,7 +28,7 @@ let mt = []
 set_mt(_G, mt)
 
 mt.__gdecl = []
-fn what() -> with info = getinfo(3, "S") -> (info.what when info else "C")
+fn what() -> with info = getinfo(3, "S") -> if info -> info.what else "C"
 
 fn mt:__newindex(n, v) do
     if not mt.__gdecl[n] do

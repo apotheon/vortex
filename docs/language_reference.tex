@@ -58,7 +58,7 @@
   keywords={},
   morekeywords=[2]{and,as,asr,band,bnot,bor,break,bsl,bsr,bxor,case,cfn,clone,coro,cycle,do,
     else,end,enum,fn,for,goto,if,in,let,loop,macro,match,module,new,not,or,quote,redo,result,
-    return,seq,set,unless,unquote,when,while,with,yield},
+    return,seq,set,unquote,when,while,with,yield},
   morekeywords=[3]{glob,rec,assert,self,super},
   morekeywords=[4]{__FILE__,__LINE__,false,nil,true},
   otherkeywords={->},
@@ -141,7 +141,6 @@ language. It tries to cover:
 \end{itemize}
 It tries to be just documentation, not a tutorial. For a tutorial, check out
 other sources (such as the Vortex wiki).
-
 \subsection{Disclaimer}
 Vortex is still in heavy development. This document will change as the language
 changes -- do not use it in production. While the basic idea and style is
@@ -191,7 +190,7 @@ comment ::= '//' /.*$\textcolor{string}{\$}$/ | '/*' { /./ | comment } '*/'
 Vortex uses C(++) style comments. Short comments comment out everything until
 the end of the line. Long comment can span multiple lines and are enclosed
 between delimiters. Unlike C(++), Vortex allows for nesting of comments
-(thus it requires you to keep them balenced). Comments do not get past
+(thus it requires you to keep them balanced). Comments do not get past
 lexical analysis.
 \subsection{Identifiers}
 \begin{lstlisting}[language=bnf]
@@ -213,12 +212,12 @@ keyword ::= 'as' | 'break' | 'case' | 'cfn' | 'clone' | 'coro'
           | 'fn' | 'for' | 'glob' | 'goto' | 'if' | 'in' | 'let'
           | 'loop' | 'macro' | 'match' | 'module' | 'new' | 'nil'
           | 'quote' | 'rec' | 'redo' | 'result' | 'return' | 'seq'
-          | 'set' | 'true' | 'unless' | 'unquote' | 'when'
-          | 'while' | 'with' | 'yield' | '__FILE__' | '__LINE__'
-          | opkeyword | opkeywordass
+          | 'set' | 'true' | 'unquote' | 'when' | 'while' | 'with'
+          | 'yield' | '__FILE__' | '__LINE__' | opkeyword
+          | opkeywordass
 unopkeyword ::= 'not' | 'bnot'
 \end{lstlisting}
-These are \enquote{reserved names} in Vortex. They cannot be used as
+These are \enquote{reserved words} in Vortex. They cannot be used as
 identifiers. Some of these specified in \verb|opkeyword| have an assignment
 form. Vortex is case sensitive, the keywords only are keywords in lowercase.
 For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can
@@ -230,15 +229,15 @@ binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '%='
         | '**' | '**=' | '-' | '-=' | '/' | '/=' | '::' | '::='
         | opkeyword | opkeywordass
 unop ::= '-' | 'not' | '#' | unopkeyword
-valuetok ::= '<string>' | '<number>' | '<ident>'
+valuetok ::= <string> | <number> | <ident>
 othertok ::= '(' | ')' | '->' | '.' | '..' | '...' | ';' | ';;'
-           | '$' | '$(' | '<eos>'
+           | '$' | '$(' | <eos>
 \end{lstlisting}
 Here you can see all the other tokens used by Vortex with separate categories
 for binary and unary operators and tokens holding a value.
 \subsection{Number literals}
 \begin{lstlisting}[language=bnf]
-hexnum ::= ('0x' | '0X') { hexdigit } [ '.' ] { hex_digit }
+hexnum ::= ('0x' | '0X') { hexdigit } [ '.' ] { hexdigit }
     [ ('p' |'P') [ '+' |'-' ] digit ]
 decnum ::= { digit } [ '.' ] { digit } [ ('e' | 'E')
     [ '+' | '-' ] digit ]
@@ -300,6 +299,30 @@ There is one non-standard escape sequence, \verb|\z|. It skips the following
 span of whitespace characters (including newlines) in both short and long
 literals. That is useful to break a short string literal into multiple lines
 and indent the lines without actually including the newlines and indentation
-in the string.
+in the string.\\
+You can also insert an arbitrary byte in the string. That can be done either
+with an escape sequence \verb|\xXX|, where \verb|XX| is a sequence of two
+hexadecimal digits (e.g. \verb|\x4F| for uppercase O) or with an escape
+sequence \verb|\ddd| where \verb|ddd| is a sequence of up to three decimal
+digits (\verb|\79| would be the uppercase O).
+
+\section{Expressions}
+Vortex is a language that consists purely of expressions. No statements are
+present in the language in that sense an expression of any type can appear
+in any context. One exception is block scopes. Only expressions that can
+cause some sort of side effect can appear there (e.g. variable assignment,
+function call and so on). The rationale for this is that doing it otherwise
+doesn't really make sense -- allowing inclusion of arbitrary expressions
+in blocks would result in code doing nothing, and that's better filtered
+out at compile time.
+\subsection{Main scope}
+\begin{lstlisting}[language=bnf]
+chunk ::= { statexp [ ';' ] } [ (retexp | resexp) [ ';' ] ]
+\end{lstlisting}
+The parsing of Vortex begins in the main scope. The main scope is a chunk.
+A chunk is a sequence of side effect based expressions optionally separated
+with semicolons. It may be ended with either a \verb|return| or a \verb|result|
+expression. Having another expression after one of these results in syntax
+error.
 
 \end{document}
