@@ -111,7 +111,17 @@
 \thispagestyle{empty}
 
 \abstract
-Vortex is a scripting language created to explore the possibilities of using Lua as an intermediate language. While compiling to performant Lua (comparable to handwritten code), Vortex tries to simplify programming by introducing new features (such as lambda expressions, macros, lists and objects) that Lua lacked before (while not introducing anything that is not present in regular Lua). Vortex gains inspiration from well known programming languages mainly in the functional paradigm, such as OCaml, F\#, Scheme and Rust besides Lua itself. The language itself tries to offer the programmer multiple paradigms -- functional, procedural, object oriented (prototype based -- delegative with multiple inheritance) and metaprogramming. Vortex does not try to create a \enquote{preprocessor} for Lua (akin to attempts like CoffeeScript/MoonScript).
+Vortex is a scripting language created to explore the possibilities of using
+Lua as an intermediate language. While compiling to performant Lua (comparable
+to handwritten code), Vortex tries to simplify programming by introducing new
+features (such as lambda expressions, macros, lists and objects) that Lua
+lacked before (while not introducing anything that is not present in regular
+Lua). Vortex gains inspiration from well known programming languages mainly
+in the functional paradigm, such as OCaml, F\#, Scheme and Rust besides Lua
+itself. The language itself tries to offer the programmer multiple paradigms
+-- functional, procedural, object oriented (prototype based -- delegative with
+    multiple inheritance) and metaprogramming. Vortex does not try to create a
+\enquote{preprocessor} for Lua (akin to attempts like CoffeeScript/MoonScript).
 
 \newpage
 \thispagestyle{empty}
@@ -120,44 +130,78 @@ Vortex is a scripting language created to explore the possibilities of using Lua
 %\setcounter{page}{1}
 
 \section{Introduction}
-This document attempts to create a reference manual for the Vortex programming language. It tries to cover:
+This document attempts to create a reference manual for the Vortex programming
+language. It tries to cover:
 \begin{itemize}
-  \item Various aspects of the language, including lexical analysis and all of the language's structures. The standard library is not covered (and at the point of writing, not yet designed).
+  \item Various aspects of the language, including lexical analysis and all of
+      the language's structures. The standard library is not covered (and at
+      the point of writing, not yet designed).
   \item Rationale for many of the language features.
   \item Examples of usage.
 \end{itemize}
-It tries to be just documentation, not a tutorial. For a tutorial, check out other sources (such as the Vortex wiki).
+It tries to be just documentation, not a tutorial. For a tutorial, check out
+other sources (such as the Vortex wiki).
 
 \subsection{Disclaimer}
-Vortex is still in heavy development. This document will change as the language changes -- do not use it in production. While the basic idea and style is given, language features may appear, change and vanish. The implementation may not reflect the actual state of the language. Some features described here are not yet implemented at the time of writing. Unimplemented features will be clearly marked as such in their section headers.
+Vortex is still in heavy development. This document will change as the language
+changes -- do not use it in production. While the basic idea and style is
+given, language features may appear, change and vanish. The implementation
+may not reflect the actual state of the language. Some features described here
+are not yet implemented at the time of writing. Unimplemented features will be
+clearly marked as such in their section headers.
 \subsection{Conventions}
-The formal grammar of Vortex specified here is written using an extended dialect of BNF. The BNF strings may contain \verb|/regexes/|. Example code is written using \verb|monospace| blocks. Character ranges may be used for obvious things, such as \verb|a-Z| or \verb|0-9|.
+The formal grammar of Vortex specified here is written using an extended
+dialect of BNF. The BNF strings may contain \verb|/regexes/|. Example code is
+written using \verb|monospace| blocks. Character ranges may be used for obvious
+things, such as \verb|a-Z| or \verb|0-9|.
 
 \section{Lexical}
-Vortex utilizes a fully free form syntax. Whitespace of any form is ignored, used only to delimit tokens where it would otherwise be ambiguous.
+Vortex utilizes a fully free form syntax. Whitespace of any form is ignored,
+used only to delimit tokens where it would otherwise be ambiguous.
 \subsection{Encoding}
 \begin{lstlisting}[language=bnf]
-alpha     ::= 'a-zA-Z'
-digit     ::= '0-9'
-hex_digit ::= '0-9a-fA-F'
+alpha    ::= 'a-zA-Z'
+digit    ::= '0-9'
+hexdigit ::= '0-9a-fA-F'
 \end{lstlisting}
-The input is a sequence of bytes. Vortex does not handle Unicode in any way, but it's UTF-8 clean. All of the grammar is confined to the ASCII. Because it's UTF-8 clean, Unicode strings and such are allowed and passed to the output without any processing. If an UTF-8 BOM is found, it's skipped automatically. If a shebang line is found in the beginning, it's skipped as well.
+The input is a sequence of bytes. Vortex does not handle Unicode in any way,
+but it's UTF-8 clean. All of the grammar is confined to the ASCII. Because
+it's UTF-8 clean, Unicode strings and such are allowed and passed to the
+output without any processing. If an UTF-8 BOM is found, it's skipped
+automatically. If a shebang line is found in the beginning, it's skipped
+as well.
 \subsection{Whitespace}
 \begin{lstlisting}[language=bnf]
 whitespace ::= ' ' | '\n' | '\r' | '\t' | '\f' | '\v'
 \end{lstlisting}
-The Vortex lexer does not care about whitespace for anything else than token separation. Whitespace is not needed to separate tokens; the source is simply read character by character and when a token ending is found, it just goes on to the next one. The BNF above shows all possible forms of whitespace in Vortex. As you can see, newlines are treated as regular whitespace as well (with the exception of incrementing the line number). Newline and carriage return can be used in pairs no matter what order (handles the common cases '\textbackslash n' and '\textbackslash r\textbackslash n' plus '\textbackslash n\textbackslash r' for rare platforms).
+The Vortex lexer does not care about whitespace for anything else than token
+separation. Whitespace is not needed to separate tokens; the source is simply
+read character by character and when a token ending is found, it just goes on
+to the next one. The BNF above shows all possible forms of whitespace in
+Vortex. As you can see, newlines are treated as regular whitespace as well
+(with the exception of incrementing the line number). Newline and carriage
+return can be used in pairs no matter what order (handles the common cases
+'\textbackslash n' and '\textbackslash r\textbackslash n' plus
+'\textbackslash n\textbackslash r' for rare platforms).
 \subsection{Comments}
 % ugly textcolor hack to make some editors happy with escaped $
 \begin{lstlisting}[language=bnf,mathescape]
-    comment ::= '//' /.*$\textcolor{string}{\$}$/ | '/*' { /./ | comment } '*/'
+comment ::= '//' /.*$\textcolor{string}{\$}$/ | '/*' { /./ | comment } '*/'
 \end{lstlisting}
-Vortex uses C(++) style comments. Short comments comment out everything until the end of the line. Long comment can span multiple lines and are enclosed between delimiters. Unlike C(++), Vortex allows for nesting of comments (thus it requires you to keep them balenced). Comments do not get past lexical analysis.
+Vortex uses C(++) style comments. Short comments comment out everything until
+the end of the line. Long comment can span multiple lines and are enclosed
+between delimiters. Unlike C(++), Vortex allows for nesting of comments
+(thus it requires you to keep them balenced). Comments do not get past
+lexical analysis.
 \subsection{Identifiers}
 \begin{lstlisting}[language=bnf]
 ident ::= ('_' | alpha) { '_' | alpha | digit }
 \end{lstlisting}
-Vortex identifiers (names) can consist of alphanumeric characters (ASCII only) and underscores. They can't start with a digit, but a digit can be present anywhere else in the identifier. Identifiers starting with an underscore followed by an uppercase character are reserved. This is by convention and not enforced by the compiler.
+Vortex identifiers (names) can consist of alphanumeric characters (ASCII only)
+and underscores. They can't start with a digit, but a digit can be present
+anywhere else in the identifier. Identifiers starting with an underscore
+followed by an uppercase character are reserved. This is by convention and
+not enforced by the compiler.
 \subsection{Keywords}
 \begin{lstlisting}[language=bnf]
 opkeyword ::= 'band' | 'bor' | 'bxor' | 'asr' | 'bsr' | 'bsl'
@@ -174,7 +218,11 @@ keyword ::= 'as' | 'break' | 'case' | 'cfn' | 'clone' | 'coro'
           | opkeyword | opkeywordass
 unopkeyword ::= 'not' | 'bnot'
 \end{lstlisting}
-These are \enquote{reserved names} in Vortex. They cannot be used as identifiers. Some of these specified in \verb|opkeyword| have an assignment form. Vortex is case sensitive, the keywords only are keywords in lowercase. For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can be used as valid identifiers.
+These are \enquote{reserved names} in Vortex. They cannot be used as
+identifiers. Some of these specified in \verb|opkeyword| have an assignment
+form. Vortex is case sensitive, the keywords only are keywords in lowercase.
+For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can
+be used as valid identifiers.
 \subsection{Other tokens}
 \begin{lstlisting}[language=bnf]
 binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '%='
@@ -186,7 +234,22 @@ valuetok ::= '<string>' | '<number>' | '<ident>'
 othertok ::= '(' | ')' | '->' | '.' | '..' | '...' | ';' | ';;'
            | '$' | '$(' | '<eos>'
 \end{lstlisting}
-Here you can see all the other tokens used by Vortex with separate categories for binary and unary operators and tokens holding a value.
+Here you can see all the other tokens used by Vortex with separate categories
+for binary and unary operators and tokens holding a value.
+\subsection{Number literals}
+\begin{lstlisting}[language=bnf]
+hexnum ::= ('0x' | '0X') { hexdigit } [ '.' ] { hex_digit }
+    [ ('p' |'P') [ '+' |'-' ] digit ]
+decnum ::= { digit } [ '.' ] { digit } [ ('e' | 'E')
+    [ '+' | '-' ] digit ]
+numliteral ::= hexnum | decnum
+\end{lstlisting}
+Vortex does not make a difference between integers and floats. Numbers follow
+the Lua format. Hexadecimal numbers start with \verb|0x| or \verb|0X| (the
+former is better). In numbers like \verb|0.6| you can omit the zero and write
+just \verb|.6|. Hexadecimal constants behave similarly. Optional decimal
+exponent is marked with \verb|e| or \verb|E| (binary exponent in hex constants
+is \verb|p| or \verb|P|).
 \subsection{String literals}
 \begin{lstlisting}[language=bnf]
 strliteral   ::= strprefix (strlong | strshort)
@@ -195,13 +258,28 @@ strshort     ::= '"' strshortelem '"' | "'" strshortelem "'"
 strlong      ::= '"""' strlongelem '"""' | "'''" strlongelem "'''"
 strshortelem ::= ? short string contents ? | stresc
 strlongelem  ::= ? long string contents ? | stresc
-stresc       ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t' | '\\v'
-               | '\\z' | '\\"' | "\\'" | '\\'
+stresc       ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t'
+               | '\\v' | '\\z' | '\\"' | "\\'" | '\\'
 \end{lstlisting}
-String literals in Vortex are similar to Python's. They are represented by the \verb|<string>| token in the final stream. There are two types of string literals, short and long literals.\\
-Short literals are delimited with either single or double quotes and typically hold a single line. They interpret escape sequences. A backslash at the end of the line can be used to make them span multiple lines. You need to escape nested single or double quotes depending on the used delimiter (e.g. single quote delimited strings need to escape nested single quotes but not double quotes).\\
-Long literals behave similarly. They're delimited by three repeated either single or double quotes. Escape sequences work the same, and long literals can span multiple lines without backslashes. You don't need to escape quotes except when three subsequent quotes are used (because otherwise they'd terminate the string).\\
-You can prefix both types of literals with either \verb|e| or \verb|r| (and uppercase versions -- no difference there). The former enables interpolation on that string -- it will interpret \verb|$var| and \verb|$(expr)| in the string, where \verb|var| is any Vortex variable you can access at that point and \verb|expr| is any Vortex expression. For example
+String literals in Vortex are similar to Python's. They are represented by the
+\verb|<string>| token in the final stream. There are two types of string
+literals, short and long literals.\\
+Short literals are delimited with either single or double quotes and
+typically hold a single line. They interpret escape sequences. A backslash at
+the end of the line can be used to make them span multiple lines. You need to
+escape nested single or double quotes depending on the used delimiter (e.g.
+single quote delimited strings need to escape nested single quotes but
+not double quotes).\\
+Long literals behave similarly. They're delimited by three repeated either
+single or double quotes. Escape sequences work the same, and long literals can
+span multiple lines without backslashes. You don't need to escape quotes except
+when three subsequent quotes are used (because otherwise they'd terminate the
+string).\\
+You can prefix both types of literals with either \verb|e| or \verb|r| (and
+uppercase versions -- no difference there). The former enables interpolation
+on that string -- it will interpret \verb|$var| and \verb|$(expr)| in the
+string, where \verb|var| is any Vortex variable you can access at that point
+and \verb|expr| is any Vortex expression. For example
 \begin{lstlisting}[language=vortex]
 for k, v in pairs([ 5, 10, 15 ]) -> print(e"$k -> $(v + 2)")
 \end{lstlisting}
@@ -211,8 +289,16 @@ will print
 2 -> 12
 3 -> 17
 \end{lstlisting}
-Interpolated strings allow you to escape the \verb|$| to prevent interpolation.\\
-The latter prefix turns the strings into raw strings. That means no escape sequences are interpreted and instead they apparear in the result verbatim. If you escape quotes, the backslashes will be visible in the string. The same applies about backslashes used to escape newlines in short literals.\\
-There is one non-standard escape sequence, \verb|\z|. It skips the following span of whitespace characters (including newlines) in both short and long literals. That is useful to break a short string literal into multiple lines and indent the lines without actually including the newlines and indentation in the string.
+Interpolated strings allow you to escape the \verb|$| to prevent interpolation.
+\\
+The latter prefix turns the strings into raw strings. That means no escape
+sequences are interpreted and instead they apparear in the result verbatim.
+If you escape quotes, the backslashes will be visible in the string. The same
+applies about backslashes used to escape newlines in short literals.\\
+There is one non-standard escape sequence, \verb|\z|. It skips the following
+span of whitespace characters (including newlines) in both short and long
+literals. That is useful to break a short string literal into multiple lines
+and indent the lines without actually including the newlines and indentation
+in the string.
 
 \end{document}
