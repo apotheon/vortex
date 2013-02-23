@@ -434,14 +434,28 @@ lex = function(ls, instr)
         -- numbers
         elseif is_digit(curr) then
             read_number(ls)
-        -- : or ::, ; or ;;
-        elseif curr == ":" or curr == ";" then
+        -- ; or ;;
+        elseif curr == ";" then
             next_char(ls)
-            if ls.current == curr then
+            if ls.current == ";" then
                 next_char(ls)
-                yield(curr .. curr)
+                yield(";;")
             else
-                yield(curr)
+                yield(";")
+            end
+        -- :, ::, ::=
+        elseif curr == ":" then
+            next_char(ls)
+            if ls.current == ":" then
+                next_char(ls)
+                if ls.current == "=" then
+                    next_char(ls)
+                    yield("::=")
+                else
+                    yield("::")
+                end
+            else
+                yield(":")
             end
         -- $ or $(
         elseif curr == "$" then

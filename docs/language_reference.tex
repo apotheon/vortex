@@ -1,0 +1,217 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage{geometry}
+\geometry{a4paper}
+% \geometry{margin=2in} % for example, change the margins to 2 inches all round
+
+\usepackage{graphicx} % support the \includegraphics command and options
+\usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+
+%%% SECTION TITLE APPEARANCE
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+\usepackage{csquotes}
+\usepackage{listings}
+\usepackage{color}
+
+\definecolor{keyword1}{RGB}{0,102,153}
+\definecolor{keyword2}{RGB}{0,153,102}
+\definecolor{keyword3}{RGB}{0,153,255}
+\definecolor{comment}{RGB}{204,0,0}
+\definecolor{function}{RGB}{153,102,255}
+\definecolor{digit}{RGB}{255,0,0}
+\definecolor{string}{RGB}{255,0,204}
+\definecolor{rule}{RGB}{192,192,192}
+\definecolor{back}{RGB}{250,250,250}
+
+\lstdefinelanguage{vortex}{
+  keywordstyle={\color{keyword2}\bfseries},
+  keywordstyle=[2]{\color{keyword1}\bfseries},
+  keywordstyle=[3]{\color{keyword2}\bfseries},
+  keywordstyle=[4]{\color{keyword3}\bfseries},
+  keywords={},
+  morekeywords=[2]{and,as,asr,band,bnot,bor,break,bsl,bsr,bxor,case,cfn,clone,coro,cycle,do,
+    else,end,enum,fn,for,goto,if,in,let,loop,macro,match,module,new,not,or,quote,redo,result,
+    return,seq,set,unless,unquote,when,while,with,yield},
+  morekeywords=[3]{glob,rec,assert,self,super},
+  morekeywords=[4]{__FILE__,__LINE__,false,nil,true},
+  otherkeywords={->},
+  morecomment=[l][\color{comment}]{//},
+  morecomment=[s][\color{comment}]{/*}{*/},
+  stringstyle=\color{string},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]""",
+  morestring=[b]''',
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{rule},
+  backgroundcolor=\color{back},
+  numbers=left
+}
+
+\lstdefinelanguage{bnf}{
+  keywordstyle={\color{keyword2}\bfseries},
+  keywords={},
+  otherkeywords={::=,|},
+  morecomment=[s][\color{comment}]{(*}{*)},
+  stringstyle=\color{string},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]/,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{rule},
+  backgroundcolor=\color{back}
+}
+
+\lstdefinelanguage{text}{
+  frame=single,
+  rulecolor=\color{rule},
+  backgroundcolor=\color{back}
+}
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{The Vortex programming language}
+\author{Daniel "q66" Kolesa}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\abstract
+Vortex is a scripting language created to explore the possibilities of using Lua as an intermediate language. While compiling to performant Lua (comparable to handwritten code), Vortex tries to simplify programming by introducing new features (such as lambda expressions, macros, lists and objects) that Lua lacked before (while not introducing anything that is not present in regular Lua). Vortex gains inspiration from well known programming languages mainly in the functional paradigm, such as OCaml, F\#, Scheme and Rust besides Lua itself. The language itself tries to offer the programmer multiple paradigms -- functional, procedural, object oriented (prototype based -- delegative with multiple inheritance) and metaprogramming. Vortex does not try to create a \enquote{preprocessor} for Lua (akin to attempts like CoffeeScript/MoonScript).
+
+\newpage
+\thispagestyle{empty}
+\tableofcontents
+\pagebreak
+%\setcounter{page}{1}
+
+\section{Introduction}
+This document attempts to create a reference manual for the Vortex programming language. It tries to cover:
+\begin{itemize}
+  \item Various aspects of the language, including lexical analysis and all of the language's structures. The standard library is not covered (and at the point of writing, not yet designed).
+  \item Rationale for many of the language features.
+  \item Examples of usage.
+\end{itemize}
+It tries to be just documentation, not a tutorial. For a tutorial, check out other sources (such as the Vortex wiki).
+
+\subsection{Disclaimer}
+Vortex is still in heavy development. This document will change as the language changes -- do not use it in production. While the basic idea and style is given, language features may appear, change and vanish. The implementation may not reflect the actual state of the language. Some features described here are not yet implemented at the time of writing. Unimplemented features will be clearly marked as such in their section headers.
+\subsection{Conventions}
+The formal grammar of Vortex specified here is written using an extended dialect of BNF. The BNF strings may contain \verb|regexes|. Example code is written using \verb|monospace| blocks. Character ranges may be used for obvious things, such as \verb|a-Z| or \verb|0-9|.
+
+\section{Lexical}
+Vortex utilizes a fully free form syntax. Whitespace of any form is ignored, used only to delimit tokens where it would otherwise be ambiguous.
+\subsection{Encoding}
+\begin{lstlisting}[language=bnf]
+alpha     ::= 'a-zA-Z'
+digit     ::= '0-9'
+hex_digit ::= '0-9a-fA-F'
+\end{lstlisting}
+The input is a sequence of bytes. Vortex does not handle Unicode in any way, but it's UTF-8 clean. All of the grammar is confined to the ASCII. Because it's UTF-8 clean, Unicode strings and such are allowed and passed to the output without any processing. If an UTF-8 BOM is found, it's skipped automatically. If a shebang line is found in the beginning, it's skipped as well.
+\subsection{Whitespace}
+\begin{lstlisting}[language=bnf]
+whitespace ::= ' ' | '\n' | '\r' | '\t' | '\f' | '\v'
+\end{lstlisting}
+The Vortex lexer does not care about whitespace for anything else than token separation. Whitespace is not needed to separate tokens; the source is simply read character by character and when a token ending is found, it just goes on to the next one. The BNF above shows all possible forms of whitespace in Vortex. As you can see, newlines are treated as regular whitespace as well (with the exception of incrementing the line number). Newline and carriage return can be used in pairs no matter what order (handles the common cases '\textbackslash n' and '\textbackslash r\textbackslash n' plus '\textbackslash n\textbackslash r' for rare platforms).
+\subsection{Comments}
+\begin{lstlisting}[language=bnf]
+comment ::= '//' /.*$/ | '/*' { /./ | comment } '*/'
+\end{lstlisting}
+Vortex uses C(++) style comments. Short comments comment out everything until the end of the line. Long comment can span multiple lines and are enclosed between delimiters. Unlike C(++), Vortex allows for nesting of comments (thus it requires you to keep them balenced). Comments do not get past lexical analysis.
+\subsection{Identifiers}
+\begin{lstlisting}[language=bnf]
+ident ::= ('_' | alpha) { '_' | alpha | digit }
+\end{lstlisting}
+Vortex identifiers (names) can consist of alphanumeric characters (ASCII only) and underscores. They can't start with a digit, but a digit can be present anywhere else in the identifier. Identifiers starting with an underscore followed by an uppercase character are reserved. This is by convention and not enforced by the compiler.
+\subsection{Keywords}
+\begin{lstlisting}[language=bnf]
+opkeyword ::= 'band' | 'bor' | 'bxor' | 'asr' | 'bsr' | 'bsl'
+            | 'and' | 'or'
+opkeywordass ::= 'band=' | 'bor=' | 'bxor=' | 'asr=' | 'bsr='
+               | 'bsl='
+keyword ::= 'as' | 'break' | 'case' | 'cfn' | 'clone' | 'coro'
+          | 'cycle' | 'do' | 'else' | 'end' | 'enum' | 'false'
+          | 'fn' | 'for' | 'glob' | 'goto' | 'if' | 'in' | 'let'
+          | 'loop' | 'macro' | 'match' | 'module' | 'new' | 'nil'
+          | 'quote' | 'rec' | 'redo' | 'result' | 'return' | 'seq'
+          | 'set' | 'true' | 'unless' | 'unquote' | 'when'
+          | 'while' | 'with' | 'yield' | '__FILE__' | '__LINE__'
+          | opkeyword | opkeywordass
+unopkeyword ::= 'not' | 'bnot'
+\end{lstlisting}
+These are \enquote{reserved names} in Vortex. They cannot be used as identifiers. Some of these specified in \verb|opkeyword| have an assignment form. Vortex is case sensitive, the keywords only are keywords in lowercase. For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can be used as valid identifiers.
+\subsection{Other tokens}
+\begin{lstlisting}[language=bnf]
+binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '%='
+        | '~' | '~=' | '+' | '+=' | '++' | '++=' | '*' | '*='
+        | '**' | '**=' | '-' | '-=' | '/' | '/=' | '::' | '::='
+        | opkeyword | opkeywordass
+unop ::= '-' | 'not' | '#' | unopkeyword
+valuetok ::= '<string>' | '<number>' | '<ident>'
+othertok ::= '(' | ')' | '->' | '.' | '..' | '...' | ';' | ';;'
+           | '$' | '$(' | '<eos>'
+\end{lstlisting}
+Here you can see all the other tokens used by Vortex with separate categories for binary and unary operators and tokens holding a value.
+\subsection{String literals}
+\begin{lstlisting}[language=bnf]
+strliteral   ::= strprefix (strlong | strshort)
+strprefix    ::= /[eErR]*/
+strshort     ::= '"' strshortelem '"' | "'" strshortelem "'"
+strlong      ::= '"""' strlongelem '"""' | "'''" strlongelem "'''"
+strshortelem ::= ? short string contents ? | stresc
+strlongelem  ::= ? long string contents ? | stresc
+stresc       ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t' | '\\v'
+               | '\\z' | '\\"' | "\\'" | '\\'
+\end{lstlisting}
+String literals in Vortex are similar to Python's. They are represented by the \verb|<string>| token in the final stream. There are two types of string literals, short and long literals.\\
+Short literals are delimited with either single or double quotes and typically hold a single line. They interpret escape sequences. A backslash at the end of the line can be used to make them span multiple lines. You need to escape nested single or double quotes depending on the used delimiter (e.g. single quote delimited strings need to escape nested single quotes but not double quotes).\\
+Long literals behave similarly. They're delimited by three repeated either single or double quotes. Escape sequences work the same, and long literals can span multiple lines without backslashes. You don't need to escape quotes except when three subsequent quotes are used (because otherwise they'd terminate the string).\\
+You can prefix both types of literals with either \verb|e| or \verb|r| (and uppercase versions -- no difference there). The former enables interpolation on that string -- it will interpret \verb|$var| and \verb|$(expr)| in the string, where \verb|var| is any Vortex variable you can access at that point and \verb|expr| is any Vortex expression. For example
+\begin{lstlisting}[language=vortex]
+for k, v in pairs([ 5, 10, 15 ]) -> print(e"$k -> $(v + 2)")
+\end{lstlisting}
+will print
+\begin{lstlisting}[language=text]
+1 -> 7
+2 -> 12
+3 -> 17
+\end{lstlisting}
+Interpolated strings allow you to escape the \verb|$| to prevent interpolation.\\
+The latter prefix turns the strings into raw strings. That means no escape sequences are interpreted and instead they apparear in the result verbatim. If you escape quotes, the backslashes will be visible in the string. The same applies about backslashes used to escape newlines in short literals.\\
+There is one non-standard escape sequence, \verb|\z|. It skips the following span of whitespace characters (including newlines) in both short and long literals. That is useful to break a short string literal into multiple lines and indent the lines without actually including the newlines and indentation in the string.
+
+\end{document}
