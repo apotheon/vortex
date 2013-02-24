@@ -2811,6 +2811,9 @@ parse_suffixedexpr = function(ls)
             assert_tok(ls, "]")
             ls:get()
             exp = Index_Expr(ls, exp, e)
+        elseif tok.name == "{" or tok.name == "<begstring>" then
+            push_curline(ls)
+            exp = Call_Expr(ls, false, exp, parse_primaryexpr(ls))
         elseif tok.name == "(" then
             push_curline(ls)
             ls:get()
