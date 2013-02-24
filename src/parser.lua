@@ -2045,7 +2045,7 @@ local parse_coro_cfn = function(ls)
     return Coro_Expr(ls, callable, body)
 end
 
-local parse_let_with = function(ls, with)
+local parse_let_with = function(ls, with, block)
     local tok = ls.token
     push_curline(ls)
     ls:get()
@@ -2086,7 +2086,8 @@ local parse_let_with = function(ls, with)
             assert_tok(ls, "->")
             ls:get()
         end
-        return With_Expr(ls, ltype or "def", ptrns, exprs, parse_expr(ls))
+        return With_Expr(ls, ltype or "def", ptrns, exprs,
+            parse_expr(ls, block))
     end
 
     return Let_Expr(ls, ltype or "def", ptrns, exprs)
@@ -2200,7 +2201,7 @@ end
 
 local parse_do
 
-local parse_if = function(ls)
+local parse_if = function(ls, block)
     push_curline(ls)
     ls:get()
     local cond = parse_expr(ls)
@@ -2210,7 +2211,7 @@ local parse_if = function(ls)
     if tok.name ~= "do" then
         assert_tok(ls, "->")
         ls:get()
-        tval = parse_expr(ls)
+        tval = parse_expr(ls, block)
         els = (tok.name == "else")
     else
         tval, els = parse_do(ls, "else")
@@ -2219,7 +2220,7 @@ local parse_if = function(ls)
     if els then
         ls:get()
         if tok.name == "->" then ls:get() end
-        return If_Expr(ls, cond, tval, parse_expr(ls))
+        return If_Expr(ls, cond, tval, parse_expr(ls, block))
     end
 
     return If_Expr(ls, cond, tval, nil)
@@ -2405,7 +2406,7 @@ parse_pattern_list = function(ls, let)
     return ptrns
 end
 
-parse_match_body = function(ls)
+parse_match_body = function(ls, block)
     local ret = {}
     local tok = ls.token
     assert_tok(ls, "|", "case")
@@ -2416,12 +2417,12 @@ parse_match_body = function(ls)
             assert_tok(ls, "->")
             ls:get()
         end
-        ret[#ret + 1] = { pl, parse_expr(ls) }
+        ret[#ret + 1] = { pl, parse_expr(ls, block) }
     until tok.name ~= "|" and tok.name ~= "case"
     return ret
 end
 
-local parse_match = function(ls)
+local parse_match = function(ls, block)
     push_curline(ls)
     ls:get()
     local el  = parse_exprlist(ls)
@@ -2429,7 +2430,7 @@ local parse_match = function(ls)
 
     assert_tok(ls, "->")
     ls:get()
-    return Match_Expr(ls, el, unpack(parse_match_body(ls)))
+    return Match_Expr(ls, el, unpack(parse_match_body(ls, block)))
 end
 
 parse_do = function(ls, ed)
@@ -2478,7 +2479,8 @@ local parse_loop = function(ls)
     end
 
     ls.lpstack:push(true)
-    local body = parse_expr(ls)
+    -- allow only statement expressions
+    local body = parse_expr(ls, true)
 
     local postcond
     if tok.name == "while" then
@@ -2525,10 +2527,12 @@ local parse_for = function(ls)
         ls:get()
     end
 
+    -- allow only statement expressions
     if range then
-        return For_Range_Expr(ls, ident, first, last, step, parse_expr(ls))
+        return For_Range_Expr(ls, ident, first, last, step,
+            parse_expr(ls, true))
     else
-        return For_Expr(ls, ids, exprs, parse_expr(ls))
+        return For_Expr(ls, ids, exprs, parse_expr(ls, true))
     end
 end
 
@@ -2853,11 +2857,11 @@ parse_simpleexpr = function(ls, block)
     elseif name == "set" then
         return parse_set(ls)
     elseif name == "with" then
-        return parse_let_with(ls, true)
+        return parse_let_with(ls, true, block)
     elseif name == "if" then
-        return parse_if(ls)
+        return parse_if(ls, block)
     elseif name == "match" then
-        return parse_match(ls)
+        return parse_match(ls, block)
     elseif name == "do" then
         return parse_do(ls)
     elseif name == "loop" then
