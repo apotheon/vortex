@@ -1900,12 +1900,6 @@ local parse_function = function(ls, obj, block)
         ls:get()
     end
 
-    local noself
-    if obj and tok.name == "@" then
-        ls:get()
-        noself = true
-    end
-
     if block then
         assert_tok(ls, "<ident>")
     end
@@ -1921,8 +1915,7 @@ local parse_function = function(ls, obj, block)
             name = tok.value
             ls:get()
             ls:get()
-            ids, defs = parse_arglist(ls, (obj and not noself)
-                and "self" or nil)
+            ids, defs = parse_arglist(ls)
             assert_tok(ls, ")")
             ls:get()
         elseif lah == ":" or lah == "." then
@@ -2855,7 +2848,7 @@ parse_simpleexpr = function(ls, block)
     local name = tok.name
 
     if name == "fn" then
-        return parse_function(ls, false, true)
+        return parse_function(ls, false, block)
     elseif name == "let" then
         return parse_let_with(ls)
     elseif name == "set" then
