@@ -30,7 +30,7 @@ set_mt(_G, mt)
 mt.__gdecl = []
 fn what() -> with info = getinfo(3, "S") -> if info -> info.what else "C"
 
-fn mt:__newindex(n, v) do
+fn mt.__newindex(self, n, v) do
     if not mt.__gdecl[n] do
         if what() != "C" ->
             error("assignment to undeclared variable '" ~ n ~ "'")
@@ -39,7 +39,7 @@ fn mt:__newindex(n, v) do
     rawset(self, n, v)
 end
 
-fn mt:__index(n) do
+fn mt.__index(self, n) do
     if not mt.__gdecl[n] and what() != "C" ->
         error("access to undeclared variable '" ~ n ~ "'")
     return rawget(self, n)

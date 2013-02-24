@@ -1904,7 +1904,7 @@ local parse_function = function(ls, obj, block)
         assert_tok(ls, "<ident>")
     end
 
-    local tbl, slf, name, ids, defs
+    local tbl, name, ids, defs
     if tok.name == "<ident>" then
         local lah = ls:lookahead()
         if lah == "(" then
@@ -1918,7 +1918,7 @@ local parse_function = function(ls, obj, block)
             ids, defs = parse_arglist(ls)
             assert_tok(ls, ")")
             ls:get()
-        elseif lah == ":" or lah == "." then
+        elseif lah == "." then
             if obj then
                 ls:get()
                 assert_tok(ls, "(")
@@ -1932,7 +1932,7 @@ local parse_function = function(ls, obj, block)
                 push_curline(ls)
                 push_curline(ls)
             end
-            tbl, slf = tok.value, (lah == ":" and true or false)
+            tbl = tok.value
             ls:get()
             ls:get()
             assert_tok(ls, "<ident>")
@@ -1940,7 +1940,7 @@ local parse_function = function(ls, obj, block)
             ls:get()
             assert_tok(ls, "(")
             ls:get()
-            ids, defs = parse_arglist(ls, slf and "self" or nil)
+            ids, defs = parse_arglist(ls)
             assert_tok(ls, ")")
             ls:get()
         elseif not ltype then
