@@ -1893,6 +1893,7 @@ local parse_function = function(ls, obj, block)
 
     local ltype
     if tok.name == "rec" or tok.name == "glob" then
+        -- a method can't be rec/glob
         if obj then
             assert_tok(ls, "<ident>")
         end
@@ -1900,14 +1901,19 @@ local parse_function = function(ls, obj, block)
         ls:get()
     end
 
-    if block then
+    -- block: requires named, ltype: implies named
+    if block or ltype then
         assert_tok(ls, "<ident>")
     end
 
     local tbl, name, ids, defs
     if tok.name == "<ident>" then
         local lah = ls:lookahead()
+        -- named function: fn name(arglist) or a method
         if lah == "(" then
+            -- for objects, one push is needed - for the name
+            -- for non-objects, we need two pushes - for Let_Expr
+            -- and for Variable_Pattern
             push_curline(ls)
             if not obj then
                 push_curline(ls)
@@ -1918,24 +1924,30 @@ local parse_function = function(ls, obj, block)
             ids, defs = parse_arglist(ls)
             assert_tok(ls, ")")
             ls:get()
+        -- named method declared outside of a table: fn tbl.name(arglist)
         elseif lah == "." then
+            -- guaranteed to error
             if obj then
                 ls:get()
                 assert_tok(ls, "(")
             end
+            -- a method can't be rec/glob
             if ltype then
                 syntax_error(ls, "method with '" .. ltype .. "'")
             end
+            -- here we need four pushes - Binary_Expr, Index_Expr,
+            -- Symbol_Expr and Value_Expr
             push_curline(ls)
-            if not obj then
-                push_curline(ls)
-                push_curline(ls)
-                push_curline(ls)
-            end
+            push_curline(ls)
+            push_curline(ls)
+            push_curline(ls)
+            -- table name
             tbl = tok.value
+            -- jump to former lookahead
             ls:get()
             ls:get()
             assert_tok(ls, "<ident>")
+            -- method name
             name = tok.value
             ls:get()
             assert_tok(ls, "(")
@@ -1943,7 +1955,9 @@ local parse_function = function(ls, obj, block)
             ids, defs = parse_arglist(ls)
             assert_tok(ls, ")")
             ls:get()
+        -- function literal: the ident is the first argument
         elseif not ltype then
+            -- guaranteed to error - a function literal can't be a method
             if obj then
                 ls:get()
                 assert_tok(ls, "(")
@@ -1959,11 +1973,12 @@ local parse_function = function(ls, obj, block)
                 ls:get()
                 ids, defs = parse_arglist(ls, v)
             end
+        -- invalid - there is a ltype, but it's not a named function - fail
         else
             ls:get()
             assert_tok(ls, "(")
         end
-    elseif not ltype then
+    else
         if obj then
             assert_tok(ls, "<ident>")
         end
@@ -1977,8 +1992,6 @@ local parse_function = function(ls, obj, block)
             assert_tok(ls, ")")
             ls:get()
         end
-    else
-        assert_tok(ls, "<ident>")
     end
 
     ls.fnstack:push({ vararg = ids[#ids] == "..." })
