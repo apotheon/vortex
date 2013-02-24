@@ -1886,7 +1886,7 @@ end
 
 local parse_match_body
 
-local parse_function = function(ls, obj)
+local parse_function = function(ls, obj, block)
     local tok = ls.token
     push_curline(ls)
     ls:get()
@@ -1904,6 +1904,10 @@ local parse_function = function(ls, obj)
     if obj and tok.name == "@" then
         ls:get()
         noself = true
+    end
+
+    if block then
+        assert_tok(ls, "<ident>")
     end
 
     local tbl, slf, name, ids, defs
@@ -2851,7 +2855,7 @@ parse_simpleexpr = function(ls, block)
     local name = tok.name
 
     if name == "fn" then
-        return parse_function(ls)
+        return parse_function(ls, false, true)
     elseif name == "let" then
         return parse_let_with(ls)
     elseif name == "set" then
