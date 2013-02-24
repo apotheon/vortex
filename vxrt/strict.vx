@@ -24,10 +24,10 @@
 let (rawget, rawset) = (raw_get, raw_set)
 let (getinfo, error, select) = (debug.getinfo, error, select)
 
-let mt = []
+let mt = {}
 set_mt(_G, mt)
 
-mt.__gdecl = []
+mt.__gdecl = {}
 fn what() -> with info = getinfo(3, "S") -> if info -> info.what else "C"
 
 fn mt.__newindex(self, n, v) do

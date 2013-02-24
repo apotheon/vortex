@@ -1825,7 +1825,7 @@ local parse_table = function(ls)
     ls:get()
     local tok, tbl = ls.token, {}
 
-    if tok.name == "]" then
+    if tok.name == "}" then
         ls:get()
         return Table_Expr(ls)
     end
@@ -1850,13 +1850,13 @@ local parse_table = function(ls)
             idx = idx + 1
         end
         if tok.name ~= "," then
-            assert_tok(ls, "]")
+            assert_tok(ls, "}")
         else
             ls:get()
         end
-    until tok.name == "]"
+    until tok.name == "}"
 
-    assert_tok(ls, "]")
+    assert_tok(ls, "}")
     ls:get()
 
     return Table_Expr(ls, unpack(tbl))
@@ -1865,20 +1865,15 @@ end
 local parse_list = function(ls)
     push_curline(ls)
     ls:get()
-    ls:get()
     local tok = ls.token
 
-    if tok.name == ":" then
-        ls:get()
-        assert_tok(ls, "]")
+    if tok.name == "]" then
         ls:get()
         return List_Expr(ls)
     end
 
     local el = parse_exprlist(ls)
 
-    assert_tok(ls, ":")
-    ls:get()
     assert_tok(ls, "]")
     ls:get()
     return List_Expr(ls, unpack(el))
@@ -2258,13 +2253,13 @@ local parse_table_pattern = function(ls, let)
     ls:get()
     local tok = ls.token
 
-    if tok.name == "]" then
+    if tok.name == "}" then
         ls:get()
         return Table_Pattern(ls)
     end
 
     local tbl = parse_compound_pattern(ls, let)
-    assert_tok(ls, "]")
+    assert_tok(ls, "}")
     ls:get()
 
     return Table_Pattern(ls, unpack(tbl))
@@ -2350,7 +2345,7 @@ local parse_primarypattern = function(ls, let)
             ls.ndstack:pop()
             return Variable_Pattern(ls, v)
         end
-    elseif tn == "[" then
+    elseif tn == "{" then
         return parse_table_pattern(ls, let)
     else
         syntax_error(ls, "pattern expected")
@@ -2689,12 +2684,10 @@ parse_primaryexpr = function(ls)
         end
         ls:get()
         return exp
+    elseif tn == "{" then
+        return parse_table(ls)
     elseif tn == "[" then
-        if ls:lookahead() == ":" then
-            return parse_list(ls)
-        else
-            return parse_table(ls)
-        end
+        return parse_list(ls)
     elseif tn == "$(" then
         ls:get()
         local exp = parse_expr(ls)
