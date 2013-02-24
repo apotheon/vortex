@@ -400,7 +400,6 @@ local Symbol_Expr = Expr:clone {
     __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         local r = self[1]
         return type(r) ~= "string" and r() or r
     end,
@@ -417,7 +416,6 @@ local Index_Expr = Expr:clone {
     __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         return gen_index(gen_withtemp(self[1], sc, "expr", {}),
             gen_evalorder(self[2], sc, "index", {}))
     end,
@@ -434,7 +432,6 @@ Value_Expr = Expr:clone {
     __init = gen_ctor(1),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         local v = self[1]
         if type(v) == "string" then return gen_str(v) end
         return tostring(v)
@@ -447,7 +444,6 @@ local Vararg_Expr = Expr:clone {
     name = "Vararg_Expr",
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         return gen_call(get_rt_fun("select"),
             gen_seq({ sc.fstate.ndefargs + 1, "..."}))
     end
@@ -595,8 +591,6 @@ local Table_Expr = Expr:clone {
     __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
-
         sc.indent = sc.indent + 1
         local kvs = {}
         local len = #self
@@ -628,7 +622,6 @@ local List_Expr = Expr:clone {
     __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         local syms, len = {}, #self
         for i = 1, len do
             syms[i] = gen_evalorder(self[i], sc, "list", {}, i == len)
@@ -644,8 +637,6 @@ local Object_Expr = Expr:clone {
     __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
-
         local pars, ctor = self[1], self[2]
 
         local syms, len = {}, #pars
@@ -703,8 +694,6 @@ local New_Expr = Expr:clone {
     __init = gen_ctor(),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
-
         local fun = get_rt_fun("obj_new")
         local sym = unique_sym("new")
         sc:push(gen_local(sym, self[1]:generate(sc, {})))
@@ -726,11 +715,8 @@ local Binary_Expr = Expr:clone {
     generate = function(self, sc, kwargs)
         local op, lhs, rhs = self[1], self[2], self[3]
         if not Ass_Ops[op] then
-            if not kwargs.statement then
-                return gen_binexpr(op, lhs:generate(sc, {}),
-                    rhs:generate(sc, {}))
-            end
-            return nil
+            return gen_binexpr(op, lhs:generate(sc, {}),
+                rhs:generate(sc, {}))
         end
 
         local lel = {}
@@ -785,10 +771,6 @@ local Binary_Expr = Expr:clone {
         end
     end,
 
-    is_lvalue = function(self)
-        return Ass_Ops[self[1]] and true or false
-    end,
-
     is_multret = function(self)
         return (Ass_Ops[self[1]] and self[2]:is_multret())
     end
@@ -801,7 +783,6 @@ local Unary_Expr = Expr:clone {
     __init = gen_ctor(2),
 
     generate = function(self, sc, kwargs)
-        if kwargs.statement then return nil end
         return gen_unexpr(self[1], self[2]:generate(sc, {}))
     end
 }
@@ -1785,8 +1766,8 @@ parse_exprlist = function(ls, lv)
     local tok, exprs = ls.token, {}
     repeat
         local ex = parse_expr(ls)
-        if lv and not ex:is_lvalue() then
-            syntax_error(ls, "expected lvalue")
+        if lv then
+            assert_check(ls, ex:is_lvalue(), "expected lvalue")
         end
         exprs[#exprs + 1] = ex
     until tok.name ~= "," or not ls:get()
@@ -2123,10 +2104,8 @@ local parse_set = function(ls)
         assert_tok(ls, ")")
         ls:get()
     else
-        lhs = parse_expr(ls)
-        if not lhs:is_lvalue() then
-            syntax_error(ls, "expected lvalue")
-        end
+        lhs = parse_suffixedexpr(ls)
+        assert_check(ls, lhs:is_lvalue(), "expected lvalue")
     end
 
     local op = tok.name
@@ -2464,7 +2443,7 @@ parse_do = function(ls, ed)
     end
 
     while true do
-        local ex = parse_expr(ls)
+        local ex = parse_expr(ls, true)
         exprs[#exprs + 1] = ex
         if tok.name == ";" then
             ls:get()
@@ -2841,41 +2820,40 @@ parse_suffixedexpr = function(ls)
                 ls:get()
             end
             exp = Call_Expr(ls, false, exp, unpack(el))
-        elseif Ass_Ops[tok.name] then
-            local op = tok.name
-            if not exp:is_lvalue() then
-                syntax_error(ls, "expected lvalue")
-            end
-            ls:get()
-            exp = Binary_Expr(ls, op, exp, parse_expr(ls))
         else
             return exp
         end
     end
 end
 
-parse_simpleexpr = function(ls)
+local parse_assexpr = function(ls, block)
+    local tok = ls.token
+    push_curline(ls)
+    local lhs = parse_suffixedexpr(ls)
+    local op  = tok.name
+    if Ass_Ops[op] then
+        assert_check(ls, lhs:is_lvalue(), "expected lvalue")
+        ls:get()
+        return Binary_Expr(ls, op, lhs, parse_expr(ls))
+    elseif block then
+        assert_check(ls, lhs:is_a(Call_Expr), "syntax error")
+    end
+    ls.ndstack:pop()
+    return lhs
+end
+
+parse_simpleexpr = function(ls, block)
     local tok = ls.token
     local name = tok.name
 
     if name == "fn" then
         return parse_function(ls)
-    elseif name == "coro" or name == "cfn" then
-        return parse_coro_cfn(ls)
     elseif name == "let" then
         return parse_let_with(ls)
     elseif name == "set" then
         return parse_set(ls)
     elseif name == "with" then
         return parse_let_with(ls, true)
-    elseif name == "seq" then
-        return parse_sequence(ls)
-    elseif name == "quote" then
-        return parse_quote(ls)
-    elseif name == "unquote" then
-        return parse_unquote(ls)
-    elseif name == "enum" then
-        return parse_enum(ls)
     elseif name == "if" then
         return parse_if(ls)
     elseif name == "match" then
@@ -2907,26 +2885,40 @@ parse_simpleexpr = function(ls)
         return parse_return(ls)
     elseif name == "yield" then
         return parse_yield(ls)
-    elseif name == "clone" then
-        return parse_object(ls)
-    elseif name == "new" then
-        return parse_new(ls)
-    elseif name == "__FILE__" then
-        push_curline(ls)
-        ls:get()
-        return Value_Expr(ls, ls.source)
-    elseif name == "__LINE__" then
-        push_curline(ls)
-        ls:get()
-        return Value_Expr(ls, ls.line_number)
-    elseif name == "..." then
-        assert_check(ls, ls.fnstack:top().vararg,
-            "cannot use '...' outside a vararg function")
-        push_curline(ls)
-        ls:get()
-        return Vararg_Expr(ls)
+    elseif not block then
+        if name == "coro" or name == "cfn" then
+            return parse_coro_cfn(ls)
+        elseif name == "seq" then
+            return parse_sequence(ls)
+        elseif name == "quote" then
+            return parse_quote(ls)
+        elseif name == "unquote" then
+            return parse_unquote(ls)
+        elseif name == "enum" then
+            return parse_enum(ls)
+        elseif name == "clone" then
+            return parse_object(ls)
+        elseif name == "new" then
+            return parse_new(ls)
+        elseif name == "__FILE__" then
+            push_curline(ls)
+            ls:get()
+            return Value_Expr(ls, ls.source)
+        elseif name == "__LINE__" then
+            push_curline(ls)
+            ls:get()
+            return Value_Expr(ls, ls.line_number)
+        elseif name == "..." then
+            assert_check(ls, ls.fnstack:top().vararg,
+                "cannot use '...' outside a vararg function")
+            push_curline(ls)
+            ls:get()
+            return Vararg_Expr(ls)
+        else
+            return parse_assexpr(ls)
+        end
     else
-        return parse_suffixedexpr(ls)
+        return parse_assexpr(ls, true)
     end
 end
 
@@ -2957,7 +2949,10 @@ parse_binexpr = function(ls, mp)
     return lhs
 end
 
-parse_expr = function(ls)
+parse_expr = function(ls, block)
+    if block then
+        return parse_simpleexpr(ls, true)
+    end
     return parse_binexpr(ls)
 end
 
@@ -3042,7 +3037,7 @@ local parse = function(fname, reader)
             while tok.name == "macro" do
                 parse_macro(ls)
             end
-            local ex = parse_expr(ls)
+            local ex = parse_expr(ls, true)
             ast[#ast + 1] = ex
             if tok.name == "<eos>" then
                 break
