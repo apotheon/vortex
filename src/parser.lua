@@ -2076,19 +2076,16 @@ local parse_let_with = function(ls, with, block)
         ptrns = { parse_pattern(ls, true) }
     end
 
+    assert_tok(ls, "=")
     local exprs
-    if tok.name == "=" then
+    ls:get()
+    if tok.name == "(" then
         ls:get()
-        if tok.name == "(" then
-            ls:get()
-            exprs = parse_exprlist(ls)
-            assert_tok(ls, ")")
-            ls:get()
-        else
-            exprs = { parse_expr(ls) }
-        end
+        exprs = parse_exprlist(ls)
+        assert_tok(ls, ")")
+        ls:get()
     else
-        exprs = {}
+        exprs = { parse_suffixedexpr(ls) }
     end
 
     if with then
@@ -2132,7 +2129,7 @@ local parse_set = function(ls)
         assert_tok(ls, ")")
         ls:get()
     else
-        rhs = parse_expr(ls)
+        rhs = parse_suffixedexpr(ls)
     end
 
     return Binary_Expr(ls, op, lhs, rhs)
@@ -2598,7 +2595,7 @@ local parse_object = function(ls)
         ls:get()
     elseif tok.name ~= ";;" and tok.name ~= "end" and tok.name ~= "->"
     and tok.name ~= "[" then
-        el = { parse_primaryexpr(ls) }
+        el = { parse_suffixedexpr(ls) }
     end
 
     -- implicit constructors
