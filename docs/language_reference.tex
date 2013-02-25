@@ -308,14 +308,17 @@ sequence \verb|\ddd| where \verb|ddd| is a sequence of up to three decimal
 digits (\verb|\79| would be the uppercase O).
 
 \section{Expressions}
+\begin{lstlisting}[language=bnf]
+exp ::= statexp
+\end{lstlisting}
 Vortex is a language that consists purely of expressions. No statements are
 present in the language in that sense an expression of any type can appear
 in any context. One exception is block scopes. Only expressions that can
 cause some sort of side effect can appear there (e.g. variable assignment,
-function call and so on). The rationale for this is that doing it otherwise
-doesn't really make sense -- allowing inclusion of arbitrary expressions
-in blocks would result in code doing nothing, and that's better filtered
-out at compile time.
+function call and so on, in the BNF they're called \verb|statexp|).
+The rationale for this is that doing it otherwise doesn't really make sense
+-- allowing inclusion of arbitrary expressions in blocks would result in code
+doing nothing, and that's better filtered out at compile time.
 \subsection{Main scope}
 \begin{lstlisting}[language=bnf]
 chunk ::= { statexp [ ';' ] } [ (retexp | resexp) [ ';' ] ]
@@ -327,9 +330,9 @@ expression. Having another expression after one of these results in syntax
 error.
 \subsection{Blocks}
 \begin{lstlisting}[language=bnf]
-block   ::= 'do' chunk ('end' | ';;')
-statexp ::= block
-exp     ::= statexp
+blockend ::= 'end' | ';;'
+block    ::= 'do' chunk blockend
+statexp  ::= block
 \end{lstlisting}
 Blocks represent chains of expressions. A block consists of a \verb|do|
 keyword, a chunk (see above) and either an \verb|end| keyword or two
@@ -338,15 +341,18 @@ Lisp style formatted code. Blocks themselves are expressions. The \verb|result|
 expression can be used to specify their value.
 \subsection{Binary and unary expressions}
 \begin{lstlisting}[language=bnf]
-binexp ::= exp binop exp | (ident | indexp) assop exp
-unexp  ::= unop exp
-exp    ::= binexp | unexp
+assexp  ::= (ident | indexp) assop exp
+binexp  ::= exp binop exp
+unexp   ::= unop exp
+exp     ::= binexp | unexp
+statexp ::= assexp
 \end{lstlisting}
 Binary expressions are expressions that consist of two operands and an
 operator. The operator is in infix form. The BNF here does not describe
 operator precedences. Assignment operators are treated differently as
 it's required to ensure that the left operand is an lvalue (you can't
-assign an arbitrary expression).\\
+assign an arbitrary expression). Assignment expressions can also be used in
+statement form, unlike any other binary expression.\\
 Unary expressions are expressions that consist of an operand and an operator
 in prefix form.
 Here you can see operator precedences for binary and unary operators in Vortex.
@@ -390,24 +396,39 @@ primaryexp ::= '(' exp ')' | tableexp | listexp | '$(' exp ')'
              | 'false'
 exp ::= primaryexp
 \end{lstlisting}
-Primary expressions are simple expressions that can have a postfix. A postfix
-is for example a parameter list (a call), brackets with an expression (index)
-or a dot (simple index). Primary expressions typically don't have a side
-effect, thus they can't be used in statement form unless postfixed as a call.
-You can wrap any arbitrary expression in parens to get a primary expression.
-All types of simple literals as well as table and list literals and macro
-expansions are primary expressions.
+Primary expressions are simple expressions that can have a suffix. A suffix
+is for example a parameter list (a call), brackets with an expression
+(indexing) or a dot (simple indexing). Primary expressions typically don't
+have a side effect, thus they can't be used in statement form unless postfixed
+as a call. You can wrap any arbitrary expression in parens to get a primary
+expression. All types of simple literals as well as table and list literals
+and macro expansions are primary expressions.
 \subsection{Suffixed expressions}
 \begin{lstlisting}[language=bnf]
-callpostfix ::= '(' exprlist ')'
-postfix     ::= [ postfix ] ('.' ident | ':' ident callpostfix
-    | callpostfix | tableexp | strliteral | ('[' expr ']'))
-suffixedexp ::= primaryexp postfix
+fcallsuffix ::= '(' exprlist ')' | tableexp | strliteral
+mcallsuffix ::= ':' ident fcallsuffix
+tcallsuffix ::= fcallsuffix | mcallsuffix
+indexsuffix ::= '.' ident | '[' exp ']'
+expsuffix   ::= [ expsuffix ] (indexsuffix | tcallsuffix)
+suffixedexp ::= primaryexp expsuffix
 exp         ::= suffixedexp
-statexp     ::= suffixedexp (':' ident callpostfix | callpostfix)
+statexp     ::= suffixedexp tcallsuffix
 \end{lstlisting}
-Suffixed expressions are primary expressions with a suffix. A suffix can
-represent indexing, method calls, regular calls.
+Suffixed expressions are primary expressions with a suffix. A suffix
+represents either a call or indexing. Suffixes can be chained. In statement
+form, only calls are allowed (not indexing alone). Indexing can be represented
+in two forms. The simpler form consists of an expression, a dot and a name.
+The name must be a valid indentifier. The more comprehensive form consists
+of an expression and an index enclosed in brackets (the index can be an
+arbitrary expression). Writing \verb|foo.bar| is equivalent to
+\verb|foo["bar"]| assuming \verb|"bar"| contains no non-identifier
+characters.\\
+Calls can be either method calls \verb|obj:mname(args)| or regular
+calls \verb|funcname(args)|. The former is just syntactic sugar for
+\verb|obj.mname(obj, args)|. If the sole argument is a table or string literal,
+you can omit the parens. That means writing \verb|funcname "foo"| and
+\verb|funcname { 5, 10, 15 }| is equivalent to \verb|funcname("foo")| and
+\verb|funcname({ 5, 10, 15 })| respectively.
 
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
