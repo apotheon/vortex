@@ -327,7 +327,9 @@ expression. Having another expression after one of these results in syntax
 error.
 \subsection{Blocks}
 \begin{lstlisting}[language=bnf]
-block ::= 'do' chunk ('end' | ';;')
+block   ::= 'do' chunk ('end' | ';;')
+statexp ::= block
+exp     ::= statexp
 \end{lstlisting}
 Blocks represent chains of expressions. A block consists of a \verb|do|
 keyword, a chunk (see above) and either an \verb|end| keyword or two
@@ -338,6 +340,7 @@ expression can be used to specify their value.
 \begin{lstlisting}[language=bnf]
 binexp ::= exp binop exp | (ident | indexp) assop exp
 unexp  ::= unop exp
+exp    ::= binexp | unexp
 \end{lstlisting}
 Binary expressions are expressions that consist of two operands and an
 operator. The operator is in infix form. The BNF here does not describe
@@ -379,6 +382,33 @@ of the given expression, \verb|**| raises lhs to a power of rhs. \verb|band|,
 bitwise OR, bitwise XOR, arithmetic right shift, bitwise right shift and
 bitwise left shift respectively. The rest of the operators is functionally
 equivalent to those in C.
+\subsection{Primary expressions}
+\begin{lstlisting}[language=bnf]
+primaryexp ::= '(' exp ')' | tableexp | listexp | '$(' exp ')'
+             | '$' ident | ident [ '!' '(' explist ')' ]
+             | numliteral | strliteral | 'nil' | 'true'
+             | 'false'
+exp ::= primaryexp
+\end{lstlisting}
+Primary expressions are simple expressions that can have a postfix. A postfix
+is for example a parameter list (a call), brackets with an expression (index)
+or a dot (simple index). Primary expressions typically don't have a side
+effect, thus they can't be used in statement form unless postfixed as a call.
+You can wrap any arbitrary expression in parens to get a primary expression.
+All types of simple literals as well as table and list literals and macro
+expansions are primary expressions.
+\subsection{Suffixed expressions}
+\begin{lstlisting}[language=bnf]
+callpostfix ::= '(' exprlist ')'
+postfix     ::= [ postfix ] ('.' ident | ':' ident callpostfix
+    | callpostfix | tableexp | strliteral | ('[' expr ']'))
+suffixedexp ::= primaryexp postfix
+exp         ::= suffixedexp
+statexp     ::= suffixedexp (':' ident callpostfix | callpostfix)
+\end{lstlisting}
+Suffixed expressions are primary expressions with a suffix. A suffix can
+represent indexing, method calls, regular calls.
+
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
 Lua, on which is built. Thus, you can find many similarities in Lua's and
