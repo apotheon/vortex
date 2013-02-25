@@ -224,17 +224,18 @@ For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can
 be used as valid identifiers.
 \subsection{Other tokens}
 \begin{lstlisting}[language=bnf]
-binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '%='
-        | '~' | '~=' | '+' | '+=' | '++' | '++=' | '*' | '*='
-        | '**' | '**=' | '-' | '-=' | '/' | '/=' | '::' | '::='
-        | opkeyword | opkeywordass
+binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '~'
+        | '+' | '++' | '*' | '**' | '-' | '/' | '::'
+        | opkeyword
+assop ::= '~=' | '+=' | '++=' | '*=' | '**=' | '-=' | '/=' | '::='
+        | '%=' | opkeywordass
 unop ::= '-' | 'not' | '#' | unopkeyword
 valuetok ::= <string> | <number> | <ident>
 othertok ::= '(' | ')' | '->' | '.' | '..' | '...' | ';' | ';;'
            | '$' | '$(' | <eos>
 \end{lstlisting}
 Here you can see all the other tokens used by Vortex with separate categories
-for binary and unary operators and tokens holding a value.
+for binary, unary and assignment operators and tokens holding a value.
 \subsection{Number literals}
 \begin{lstlisting}[language=bnf]
 hexnum ::= ('0x' | '0X') { hexdigit } [ '.' ] { hexdigit }
@@ -324,5 +325,85 @@ A chunk is a sequence of side effect based expressions optionally separated
 with semicolons. It may be ended with either a \verb|return| or a \verb|result|
 expression. Having another expression after one of these results in syntax
 error.
+\subsection{Blocks}
+\begin{lstlisting}[language=bnf]
+block ::= 'do' chunk ('end' | ';;')
+\end{lstlisting}
+Blocks represent chains of expressions. A block consists of a \verb|do|
+keyword, a chunk (see above) and either an \verb|end| keyword or two
+semicolons. The semicolon ending is useful in inline blocks or in
+Lisp style formatted code. Blocks themselves are expressions. The \verb|result|
+expression can be used to specify their value.
+\subsection{Binary and unary expressions}
+\begin{lstlisting}[language=bnf]
+binexp ::= exp binop exp | (ident | indexp) assop exp
+unexp  ::= unop exp
+\end{lstlisting}
+Binary expressions are expressions that consist of two operands and an
+operator. The operator is in infix form. The BNF here does not describe
+operator precedences. Assignment operators are treated differently as
+it's required to ensure that the left operand is an lvalue (you can't
+assign an arbitrary expression).\\
+Unary expressions are expressions that consist of an operand and an operator
+in prefix form.
+Here you can see operator precedences for binary and unary operators in Vortex.
+\begin{center}
+\begin{tabular}{| l | l | l |}
+\hline
+\textbf{Operator} & \textbf{Precedence} & \textbf{Associativity} \\ \hline
+=, +=, -=, *=, /=, \%=, ~=, ++=, ::=, **=, & 1 & right \\
+band=, bor=, bxor=, asr=, bsr=, bsl= & & \\ \hline
+or & 2 & left \\ \hline
+and & 3 & left \\ \hline
+==, != & 4 & left \\ \hline
+<, <=, >, >= & 5 & left \\ \hline
+~ & 6 & right \\ \hline
+bor & 7 & left \\ \hline
+bxor & 8 & left \\ \hline
+band & 9 & left \\ \hline
+asr, bsr, bsl & 10 & left \\ \hline
++, - & 11 & left \\ \hline
+*, /, \% & 12 & left \\ \hline
+++ & 13 & left \\ \hline
+:: & 14 & right \\ \hline
+-, not, \#, bnot & 15 & unary \\ \hline
+** & 16 & right \\ \hline
+\end{tabular}
+\end{center}
+Most of the operators should be clear when it comes to meaning. Assignment
+operators in form \verb|lhs op= rhs| are equivalent to \verb|lhs = lhs op rhs|.
+\verb|~| means concatenation, \verb|++| is a join operator (for tables),
+\verb|::| is a cons operator (as in Lisp), \verb|#| retrieves the length
+of the given expression, \verb|**| raises lhs to a power of rhs. \verb|band|,
+\verb|bor|, \verb|bxor|, \verb|asr|, \verb|bsr|, \verb|bsl| mean bitwise AND,
+bitwise OR, bitwise XOR, arithmetic right shift, bitwise right shift and
+bitwise left shift respectively. The rest of the operators is functionally
+equivalent to those in C.
+\section{Appendix: Influences}
+Vortex is a language with many influences. It follows the same principles as
+Lua, on which is built. Thus, you can find many similarities in Lua's and
+Vortex's syntax and semantics as well as the core set of features. Vortex and
+Lua are both built around tables, the ultimate do-it-all data structure.
+The reliance on higher order and first class functions is also taken very
+seriously in both languages.\\
+The second largest influence for Vortex is OCaml. Vortex takes many primarily
+syntactic features from OCaml, including the pattern matching syntax. Vortex
+is however, unlike OCaml, an untyped language. The features are thus adjusted
+accordingly for Vortex.\\
+OCaml's relative, F\#, is also influental for Vortex. The basic idea of
+sequences in place of list comprehensions is taken from F\#, but unlike
+F\# sequences are not values in Vortex, instead they're simply tuples
+of values that can't be treated in a first class manner.\\
+The prototype based multiple inheritance object system of Vortex is inspired
+by Io. Compared to Io, the constructors work differently and Vortex's object
+system allows you to pretty much closely imitate classes (those are handled
+a bit differently in Io).\\
+Scheme inspired Vortex in how simple a language can be while remaining very
+powerful. Along with Elixir, Scheme provided a basis for Vortex AST macros.\\
+Elixir and Ruby influenced Vortex's syntax. The Rust language provided an
+example how terse a syntax can be and several of Vortex's keywords are or
+were taken from Rust. The \verb|cycle| keyword is taken from Fortran.\\
+Other languages that influenced Vortex to some degree are ALGOL, C, CLU,
+Haskell, Python and Self.
 
 \end{document}
