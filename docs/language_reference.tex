@@ -17,6 +17,7 @@
 \usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
 \usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
 % These packages are all incorporated in the memoir class to one degree or another...
+\usepackage{textcomp}
 
 %%% HEADERS & FOOTERS
 \usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
@@ -367,7 +368,7 @@ band=, bor=, bxor=, asr=, bsr=, bsl= & & \\ \hline
 or & 2 & left \\ \hline
 and & 3 & left \\ \hline
 ==, != & 4 & left \\ \hline
-<, <=, >, >= & 5 & left \\ \hline
+\textless, \textless=, \textgreater, \textgreater= & 5 & left \\ \hline
 ~ & 6 & right \\ \hline
 bor & 7 & left \\ \hline
 bxor & 8 & left \\ \hline
