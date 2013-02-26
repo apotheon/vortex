@@ -195,6 +195,7 @@ lexical analysis.
 \subsection{Identifiers}
 \begin{lstlisting}[language=bnf]
 ident ::= ('_' | alpha) { '_' | alpha | digit }
+identlist ::= [ ident { ',' ident } ]
 \end{lstlisting}
 Vortex identifiers (names) can consist of alphanumeric characters (ASCII only)
 and underscores. They can't start with a digit, but a digit can be present
@@ -310,6 +311,7 @@ digits (\verb|\79| would be the uppercase O).
 \section{Expressions}
 \begin{lstlisting}[language=bnf]
 exp ::= statexp
+explist ::= [ exp { ',' exp } ]
 \end{lstlisting}
 Vortex is a language that consists purely of expressions. No statements are
 present in the language in that sense an expression of any type can appear
@@ -405,7 +407,7 @@ expression. All types of simple literals as well as table and list literals
 and macro expansions are primary expressions.
 \subsection{Suffixed expressions}
 \begin{lstlisting}[language=bnf]
-fcallsuffix ::= '(' exprlist ')' | tableexp | strliteral
+fcallsuffix ::= '(' explist ')' | tableexp | strliteral
 mcallsuffix ::= ':' ident fcallsuffix
 tcallsuffix ::= fcallsuffix | mcallsuffix
 indexsuffix ::= '.' ident | '[' exp ']'
@@ -429,6 +431,100 @@ calls \verb|funcname(args)|. The former is just syntactic sugar for
 you can omit the parens. That means writing \verb|funcname "foo"| and
 \verb|funcname { 5, 10, 15 }| is equivalent to \verb|funcname("foo")| and
 \verb|funcname({ 5, 10, 15 })| respectively.
+\subsection{Functions}
+\begin{lstlisting}[language=bnf]
+defarglist ::= [ ident '=' exp { ',' ident '=' exp } ]
+arglist    ::= identlist defarglist [ [ ident ] '...' ]
+fntype     ::= 'rec' | 'glob'
+fnliteral  ::= 'fn' (arglist | '(' arglist ')') ('->' exp | block)
+fndef      ::= 'fn' ([ fntype ] ident | ident [ '.' ident ])
+    '(' arglist ')' ('->' exp | block)
+statexp    ::= fndef
+exp        ::= fnliteral
+\end{lstlisting}
+Vortex features first class functions. That means a function can be treated
+as a first class citizen -- you can pass it as an argument or return it from
+another function. Like in Lua, functions are passed by reference -- you never
+access the function value directly, you only access its reference.\\
+You can create a function two ways. The first way is an anonymous function.
+Because anonymous functions don't have names, you need to assign it to a
+variable. It looks like this:
+\begin{lstlisting}[language=vortex]
+let add = fn a, b -> a + b
+print(add(5, 10))
+\end{lstlisting}
+You can optionally put parens around the argument list. The second way is
+a named function. Given the previous example, you can rewrite your function
+as:
+\begin{lstlisting}[language=vortex]
+fn add(a, b) -> a + b
+\end{lstlisting}
+Named functions can be defined as table members. For example:
+\begin{lstlisting}[language=vortex]
+let tbl = {}
+fn tbl.foo() -> "hello world"
+\end{lstlisting}
+They can also have modifiers, the same ones as the \verb|let| expression
+(unless defined as table members -- then it doesn't make sense).
+Currently there are two, \verb|rec| and \verb|glob|. The former makes a named
+function recursive (so that it can call itself). Anonymous functions assigned
+to variables are by default not recursive. The latter makes the function
+variable global. By default, named functions in Vortex are local.
+\begin{lstlisting}[language=vortex]
+let foo = fn -> foo() // won't work - non-recursive
+let rec bar = fn -> bar() // works - bar previously declared
+fn foo() -> foo() // won't work
+fn rec bar() -> bar() // works
+\end{lstlisting}
+Named functions can be used as statements. Anonymous functions can't.\\
+Now, if you look at the examples, you can see they're pretty much lambda
+expressions. They take inputs and they return the value specified after
+the arrow. You can combine that with blocks. Both \verb|return| and
+\verb|result| can be used to specify the function return value. The
+former simply jumps out of the function and makes it return the value,
+the latter specifies the value of the block which the function then
+returns. The result is pretty much the same.
+\begin{lstlisting}[language=vortex]
+fn foo() -> do
+    ...
+end
+\end{lstlisting}
+The arrow feels kinda superfluous. Vortex allows you to omit it:
+\begin{lstlisting}[language=vortex]
+fn foo() do
+    ...
+end
+\end{lstlisting}
+Function arguments in Vortex can have default values. After you specify
+the first default value, every argument after that one must specify a default
+value. Example:
+\begin{lstlisting}[language=vortex]
+// you can reference the previous arguments too
+fn foo(a, b = 5, c = b + 2, d = c + 3) do
+    ...
+end
+\end{lstlisting}
+You can end the argument list with an ellipsis argument. That means the
+function will be variadic and you can access the remaining arguments
+passed to the function again using an ellipsis. Example:
+\begin{lstlisting}[language=vortex]
+fn printf(fmt, ...) do
+    print(fmt:format(...))
+end
+\end{lstlisting}
+You can name the vararg tuple and pass it around as a table like this:
+\begin{lstlisting}[language=vortex]
+fn foo(a, b...) do
+    print(a, b[1], b[2])
+end
+\end{lstlisting}
+That is functionally equivalent to:
+\begin{lstlisting}[language=vortex]
+fn foo(a, ...) do
+    let b = { ... }
+    print(a, b[1], b[2])
+end
+\end{lstlisting}
 
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
@@ -453,8 +549,9 @@ Scheme inspired Vortex in how simple a language can be while remaining very
 powerful. Along with Elixir, Scheme provided a basis for Vortex AST macros.\\
 Elixir and Ruby influenced Vortex's syntax. The Rust language provided an
 example how terse a syntax can be and several of Vortex's keywords are or
-were taken from Rust. The \verb|cycle| keyword is taken from Fortran.\\
+were taken from Rust. The \verb|cycle| keyword is taken from Fortran.
+String literal syntax is taken from Python.\\
 Other languages that influenced Vortex to some degree are ALGOL, C, CLU,
-Haskell, Python and Self.
+Haskell and Self.
 
 \end{document}
