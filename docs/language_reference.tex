@@ -216,7 +216,7 @@ keyword ::= 'as' | 'break' | 'case' | 'cfn' | 'clone' | 'coro'
           | 'quote' | 'rec' | 'redo' | 'result' | 'return' | 'seq'
           | 'set' | 'true' | 'unquote' | 'when' | 'while' | 'with'
           | 'yield' | '__FILE__' | '__LINE__' | opkeyword
-          | opkeywordass
+          | opkeywordass | unopkeyword
 unopkeyword ::= 'not' | 'bnot'
 \end{lstlisting}
 These are \enquote{reserved words} in Vortex. They cannot be used as
@@ -526,6 +526,46 @@ fn foo(a, ...) do
     print(a, b[1], b[2])
 end
 \end{lstlisting}
+
+\section{The REPL}
+Vortex provides an interactive command line and a standalone script runner
+combined into a single script. By default it launches an interactive session.
+There you can input statements.\\
+Local variables are preserved.
+\begin{lstlisting}[language=vortex,numbers=none]
+> let x = 5
+> =x // proper output
+5
+\end{lstlisting}
+The Vortex REPL in the default implementation is itself written in Vortex.
+It requires a Lua module called \verb|vxutil|. This module is shipped with
+Vortex and is written in C -- you need to compile it and then put into a
+Lua C module search path (for example the current directory). The C module
+provides support for signals, \verb|isatty| and the readline library. All
+functions have their fallbacks. For example, if you want readline support in
+the REPL (so that you can move in the history and seek in the current input),
+you need to compile the C module with \verb|VX_READLINE| defined. For proper
+function of \verb|isatty| you need to compile the module with either
+\verb|VX_POSIX| or \verb|VX_WIN| defined depending on your platform. If you
+don't define either of these, a fallback will always return true, which
+means autodetection whether to launch an interactive session won't work
+(when \verb|isatty| returns false, it means something is piped into the
+standard input, and the REPL tries to execute that).
+\begin{lstlisting}[language=text]
+usage: vortex [options] [script [args]]
+-e str  run the string 'str'
+-i      enter interactive mode after the options are handled
+-l lib  require library 'lib'
+-v      show version information
+--      stop handling options
+-       stop handling options and run stdin
+\end{lstlisting}
+Here you can see the REPL options you can pass to it. As mentioned above,
+you can use the REPL with pipes. For example
+\begin{lstlisting}[language=text]
+echo 'print("hello world")'|<replcommand>
+\end{lstlisting}
+should work.
 
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
