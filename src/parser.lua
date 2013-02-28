@@ -10,43 +10,46 @@ if not vxrt then
     _G["rt_parser"] = nil
 end
 
--- t[1] > t[2] == right-associative, otherwise left-associative
 local Binary_Ops = {
     -- assignment ops are left out, they're right associative and have the
     -- lowest precedence; we're leaving them out of the precedence parser
     -- in order to gain flexibility and allow for pack exprs like in let.
 
     -- logical operators or, and
-    ["or"] = { 1, 1 }, ["and"] = { 2, 2 },
+    ["or"] = 1, ["and"] = 2,
 
     -- eq / neq comparison
-    ["=="] = { 3, 3 }, ["!="] = { 3, 3 },
+    ["=="] = 3, ["!="] = 3,
 
     -- other comparisons
-    ["<" ] = { 4, 4 }, ["<="] = { 4, 4 }, [">"] = { 4, 4 },
-    [">="] = { 4, 4 },
+    ["<" ] = 4, ["<="] = 4, [">"] = 4,
+    [">="] = 4,
 
     -- concat
-    ["~"] = { 6, 5 },
+    ["~"] = 5,
 
     -- bitwise ops
-    ["bor"] = { 7,  7  }, ["bxor"] = { 8,  8  }, ["band"] = { 9,  9  },
-    ["asr"] = { 10, 10 }, ["bsr" ] = { 10, 10 }, ["bsl" ] = { 10, 10 },
+    ["bor"] = 6, ["bxor"] = 7, ["band"] = 8,
+    ["asr"] = 9, ["bsr" ] = 9, ["bsl" ] = 9,
 
     -- arithmetic ops
-    ["+"] = { 11, 11 }, ["-"] = { 11, 11 }, ["*"] = { 12, 12 },
-    ["/"] = { 12, 12 }, ["%"] = { 12, 12 },
+    ["+"] = 10, ["-"] = 10, ["*"] = 11,
+    ["/"] = 11, ["%"] = 11,
 
     -- join is left associative, cons is right associative
-    ["++"] = { 13, 13 }, ["::"] = { 14, 13 },
+    ["++"] = 12, ["::"] = 13,
 
     -- unary ops come now, but are in their own table
     -- and the last one - pow
-    ["**"] = { 17, 16 }
+    ["**"] = 15
+}
+
+local Right_Ass = {
+    ["~"] = true, ["::"] = true, ["**"] = true
 }
 
 local Unary_Ops = {
-    ["-"  ] = 15, ["not"] = 15, ["#"  ] = 15, ["bnot"] = 15
+    ["-"  ] = 14, ["not"] = 14, ["#"  ] = 14, ["bnot"] = 14
 }
 
 local Ass_Ops = {
@@ -2941,13 +2944,13 @@ parse_binexpr = function(ls, mp)
     while true do
         local cur = tok.name
 
-        local t = Binary_Ops[cur]
-        if not cur or not t or t[1] < mp then break end
+        local p = Binary_Ops[cur]
+        if not cur or not p or p < mp then break end
 
-        local op, p1, p2 = cur, t[1], t[2]
+        local op = cur
 
         ls:get()
-        local rhs = parse_binexpr(ls, p1 > p2 and p1 or p2)
+        local rhs = parse_binexpr(ls, Right_Ass[op] and p or p + 1)
 
         lhs = Binary_Expr(ls, op, lhs, rhs)
         push_curline(ls)
