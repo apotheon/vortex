@@ -155,6 +155,39 @@ dialect of BNF. The BNF strings may contain \verb|/regexes/|. Example code is
 written using \verb|monospace| blocks. Character ranges may be used for obvious
 things, such as \verb|a-Z| or \verb|0-9|.
 
+\section{Concepts}
+Vortex shares most of the basic concepts with Lua.
+\subsection{Variables and values}
+Vortex is an untyped language, or unityped to be precise -- there is a single
+data type in the language, a value, similar to Lua, Python, JavaScript and
+so on. The values are tagged. The variable holds the data type and its value
+holds the tag.\\
+Vortex type tags are shared with Lua, being represented by \verb|nil|,
+\verb|boolean|, \verb|number|, \verb|string|, \verb|function|,
+\verb|userdata|, \verb|thread| and \verb|table|. The \verb|nil| tag can have
+a single value, \verb|nil|. The \verb|boolean| tag can have the \verb|true|
+and \verb|false| values. The only two values that evaluate as false in
+conditions are \verb|false| and \verb|nil|. The tag \verb|number| represents
+a floating point number (by default double precision), depending on the
+underlying C. The tag \verb|string| is an immutable sequence of bytes.
+Vortex is like Lua 8-bit clean. Strings can contain any byte, including
+embedded zeros.\\
+The tag \verb|userdata| has the same meaning as in Lua. The managed kind
+represents a managed (garbage collected) block of memory that can have
+a metatable. The light kind represents a raw pointer. The tag \verb|thread|
+is represented by coroutines which are identical with Lua's. Functions are
+represented using the tag \verb|function|. They're transparent closures.\\
+And finally \verb|table| is the ultimate do-it-all data structure of Vortex.
+It represents an associative array (unordered hash map). It's heterogenous,
+being able to hold any arbitrary value except nil in both key and value
+positions.\\
+Vortex also has lists. These are similar to lists in Lisp or other functional
+languages. They don't hold their own tag -- they're tables with specific
+behavior.\\
+Functions, threads, full userdata and tables are always accessed by reference,
+everything else by value (copied). All values are first class values. You can
+store them, pass them around and return from functions.
+
 \section{Lexical}
 Vortex utilizes a fully free form syntax. Whitespace of any form is ignored,
 used only to delimit tokens where it would otherwise be ambiguous.
@@ -533,9 +566,9 @@ combined into a single script. By default it launches an interactive session.
 There you can input statements.\\
 Local variables are preserved.
 \begin{lstlisting}[language=vortex,numbers=none]
-> let x = 5
+> let x = { 5, 10, { 15, 20 } }
 > =x // proper output
-5
+{ 5, 10, { 15, 20 } }
 \end{lstlisting}
 The Vortex REPL in the default implementation is itself written in Vortex.
 It requires a Lua module called \verb|vxutil|. This module is shipped with
@@ -565,7 +598,11 @@ you can use the REPL with pipes. For example
 \begin{lstlisting}[language=text]
 echo 'print("hello world")'|<replcommand>
 \end{lstlisting}
-should work.
+should work.\\
+If your interactive line starts with \verb|=| followed by an expression,
+the REPL prints its value. You can see an example in the very beginning
+of this section. Tables get special treatment -- they're serialized before
+printing. That should allow you to see the values clearly.
 
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
