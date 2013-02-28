@@ -186,7 +186,13 @@ languages. They don't hold their own tag -- they're tables with specific
 behavior.\\
 Functions, threads, full userdata and tables are always accessed by reference,
 everything else by value (copied). All values are first class values. You can
-store them, pass them around and return from functions.
+store them, pass them around and return from functions.\\
+There are two types of variables in Vortex, locals and table fields. Global
+variables are merely fields of the global table called \verb|_G|. Local and
+global variables have to be declared before they can be assigned or used,
+which is different from Lua, where assignment to undeclared variable creates
+a global and reading an undeclared variable results in the \verb|nil| value.
+You declare and define variables using the \verb|let| expression.
 
 \section{Lexical}
 Vortex utilizes a fully free form syntax. Whitespace of any form is ignored,
@@ -465,13 +471,44 @@ calls \verb|funcname(args)|. The former is just syntactic sugar for
 you can omit the parens. That means writing \verb|funcname "foo"| and
 \verb|funcname { 5, 10, 15 }| is equivalent to \verb|funcname("foo")| and
 \verb|funcname({ 5, 10, 15 })| respectively.
+\subsection{Let expression}
+\begin{lstlisting}[language=bnf]
+lettype ::= 'rec' | 'glob'
+letexp  ::= 'let' [ lettype ] (pattern | '(' patternlist ')')
+    '=' (suffixedexp | '(' explist ')')
+\end{lstlisting}
+The \verb|let| expression provides means to declare and define variables.
+It consists of the keyword, a pattern or a pattern list enclosed in parens,
+an assignment operator and either a suffixed expression or an expression
+list enclosed in parens.\\
+You can also optionally provide modifier after the keyword. The modifier
+can currently be either \verb|rec| or \verb|glob|. The former is best used
+with functions -- it makes it possible for a variable to access itself and
+that way you can define recursive functions. Normally functions can't access
+themselves. The latter is used to define a global variable -- by default,
+all Vortex variables are local.\\
+You can't normally declare a variable without definition. However, you can
+assign nil to it, which is the same in meaning.\\
+For patterns, look up the section about pattern matching. Note that only
+patterns that never fail to match can be used with \verb|let|. For convenience,
+the table pattern always matches in let but doesn't have to in regular
+pattern matching (that is because in let you sometimes want to extract
+just a few elements of an array, but in pattern matching you want it
+precise).\\
+An example of let expression:
+\begin{lstlisting}[language=vortex]
+let x = 5; // local variable x
+let glob y = 10; // global variable y
+fn foo() -> [ 5, 10, 15 ]
+let [ a, b ] = foo() // a is 5, b is 10 - pattern usage
+fn rec bar() -> bar() // recursive
+\end{lstlisting}
 \subsection{Functions}
 \begin{lstlisting}[language=bnf]
 defarglist ::= [ ident '=' exp { ',' ident '=' exp } ]
 arglist    ::= identlist defarglist [ [ ident ] '...' ]
-fntype     ::= 'rec' | 'glob'
 fnliteral  ::= 'fn' (arglist | '(' arglist ')') ('->' exp | block)
-fndef      ::= 'fn' ([ fntype ] ident | ident [ '.' ident ])
+fndef      ::= 'fn' ([ lettype ] ident | ident [ '.' ident ])
     '(' arglist ')' ('->' exp | block)
 statexp    ::= fndef
 exp        ::= fnliteral
@@ -499,11 +536,9 @@ let tbl = {}
 fn tbl.foo() -> "hello world"
 \end{lstlisting}
 They can also have modifiers, the same ones as the \verb|let| expression
-(unless defined as table members -- then it doesn't make sense).
-Currently there are two, \verb|rec| and \verb|glob|. The former makes a named
-function recursive (so that it can call itself). Anonymous functions assigned
-to variables are by default not recursive. The latter makes the function
-variable global. By default, named functions in Vortex are local.
+(unless defined as table members -- then it doesn't make sense). Named
+function definitions follow the same rules as the \verb|let| expression.
+By default, named functions are local.
 \begin{lstlisting}[language=vortex]
 let foo = fn -> foo() // won't work - non-recursive
 let rec bar = fn -> bar() // works - bar previously declared
