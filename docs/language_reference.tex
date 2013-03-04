@@ -193,7 +193,101 @@ global variables have to be declared before they can be assigned or used,
 which is different from Lua, where assignment to undeclared variable creates
 a global and reading an undeclared variable results in the \verb|nil| value.
 You declare and define variables using the \verb|let| expression.
-
+\subsection{Metaprogramming}
+Vortex features two types of metaprogramming -- static and dynamic. Dynamic
+metaprogramming is identical to Lua's and is represented by reflection over
+tables and by metatables. Vortex however also introduces static metaprogramming
+(performed at compile time). That is represented by macros. Macros work at
+AST level. They're hygienic -- identifiers inside them cannot escape unless
+explicitly desired.\\
+As Vortex's module system is dynamic, evaluated already past the macro
+expansion step, there is a system of language \enquote{extensions} that
+allow macros across modules.
+\subsection{Modules}
+As said above, Vortex features a dynamic module system. It's taken from
+Lua itself and it's compatible. It's further documented in the standard
+library part.
+\subsection{Tables and metatables}
+As said before, the table is the ultimate do-it-all and the only data structure
+in Vortex and Lua. Vortex also has lists, but they're simply tables with
+syntax. The real power of tables comes from metatables.\\
+Every table can have a metatable, or any value actually. In case of tables
+and userdata, each piece of userdata and each table can have (but doesn't
+have to have) its own, unique metatable. With other values, the metatable
+is specific to the type tag (for example all strings share a single
+metatable). Of course, you can share metatables between tables, but
+it's all explicit.\\
+Metatables are ordinary tables. A metatable contains metamethods. Metamethods
+define fallbacks for operations on the value. What does this mean? It means
+you can change the semantics on tables and other values and extend the
+language this way. For example, a metamethod \verb|__add| defines
+what happens when you add the value together with some other value.\\
+Metamethods have intuitive naming scheme based on the name of the event
+they handle. They're prefixed with two underscores. You can get a metatable
+of a value using the \verb|get_mt| function. You can set a metatable using
+\verb|set_mt|.
+\subsection{Coroutines}
+Lua offers coroutines and so does Vortex. Coroutines are used to do
+collaborative multithreading. A coroutine is a thread -- it has its own
+stack, but it's not an OS thread. Unlike Lua, Vortex offers specialized
+coroutine syntax.\\
+A coroutine is somewhat similar to a function. When you create a coroutine
+from a function, you get a thread object. The thread object is by default in
+a suspended state. When you resume the thread object, the function runs. If
+it's a regular function you could call normally, the thread object dies and
+can't be resumed again.\\
+There is a language construct in Vortex called \verb|yield|. Yielding a
+coroutine results in the thread object being suspended at the point of
+yield. You can then again resume the coroutine and it'll run until the
+next yield.\\
+You can pass one or more expressions to \verb|yield|. The grammar is defined
+in the language section. The \verb|resume| function will return values
+of the expressions passed to \verb|yield|. It also returns the return
+value of the function when the thread object dies. \verb|Yield| thus has
+the same semantics as \verb|return| when it comes to resuming, except that
+it only suspends the coroutine instead of making it die.\\
+You can also pass expressions to \verb|resume|. They'll be returned inside
+the coroutine by the yield. An example:
+\begin{lstlisting}[language=vortex]
+// special syntax for coroutines provided by Vortex
+// coroutines can also be created from functions using
+// special calls with the same effect
+let my_coroutine = coro a, b do
+    print("AB", a, b)
+    let (c, d) = yield (5, 10)
+    print("CD", c, d)
+    return (15, 20)
+end
+print(resume(my_coroutine, 2, 3))
+print(resume(my_coroutine, 6, 7))
+print(resume(my_coroutine, 8, 9))
+\end{lstlisting}
+This will print something like
+\begin{lstlisting}[language=text]
+AB 2 3
+true 5 10
+CD 6 7
+true 15 20
+false cannot resume dead coroutine
+\end{lstlisting}
+What exactly happened here? First, we resumed the coroutine, passing values
+\verb|2| and \verb|3| to it. Here it was like a function call. The passed
+values became \verb|a| and \verb|b|. The coroutine then printed them and
+yielded -- suspended itself, passing back values \verb|5| and \verb|10|
+and expecting \verb|c| and \verb|d| for the next resume. The \verb|resume|
+function then printed true (\verb|resume| returns the state the coroutine
+was in -- whether it was dead or alive as the first result) plus the
+yielded values.\\
+Then we resumed once again. The values passed to \verb|resume| became
+\verb|c| and \verb|d| as expected. The coroutine printed the values and
+returned more values. The coroutine has died by now. The \verb|resume| call
+once again returned \verb|true| (because it was alive at the point of
+execution) and the return values. A third resume returned \verb|false|,
+because the coroutine was already dead, plus an error message.\\
+That's coroutines in a nutshell. There are two variants of coroutines
+in Vortex, regular coroutines and generators. There's a subtle difference
+in the amount of power they give you and in the simplicity of writing.
+Please refer to the later sections.
 \section{Lexical}
 Vortex utilizes a fully free form syntax. Whitespace of any form is ignored,
 used only to delimit tokens where it would otherwise be ambiguous.
