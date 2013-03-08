@@ -3,6 +3,7 @@
 
 \documentclass{article}
 \usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 
 \usepackage{geometry}
 \geometry{a4paper}
@@ -18,6 +19,7 @@
 \usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
 % These packages are all incorporated in the memoir class to one degree or another...
 \usepackage{textcomp}
+\usepackage{hyperref}
 
 %%% HEADERS & FOOTERS
 \usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
@@ -39,6 +41,7 @@
 
 \usepackage{csquotes}
 \usepackage{listings}
+\usepackage{syntax}
 \usepackage{color}
 
 \definecolor{keyword1}{RGB}{0,102,153}
@@ -50,6 +53,19 @@
 \definecolor{string}{RGB}{255,0,204}
 \definecolor{rule}{RGB}{192,192,192}
 \definecolor{back}{RGB}{250,250,250}
+
+\usepackage[linecolor=rule,
+    backgroundcolor=back,innertopmargin=12pt,skipbelow=5pt]{mdframed}
+
+\newenvironment{bnf}
+{
+\begin{mdframed}
+\begin{grammar}
+}
+{
+\end{grammar}
+\end{mdframed}
+}
 
 \lstdefinelanguage{vortex}{
   keywordstyle={\color{keyword2}\bfseries},
@@ -75,21 +91,6 @@
   rulecolor=\color{rule},
   backgroundcolor=\color{back},
   numbers=left
-}
-
-\lstdefinelanguage{bnf}{
-  keywordstyle={\color{keyword2}\bfseries},
-  keywords={},
-  otherkeywords={::=,|},
-  morecomment=[s][\color{comment}]{(*}{*)},
-  stringstyle=\color{string},
-  morestring=[b]",
-  morestring=[b]',
-  morestring=[b]/,
-  showstringspaces=false,
-  frame=single,
-  rulecolor=\color{rule},
-  backgroundcolor=\color{back}
 }
 
 \lstdefinelanguage{text}{
@@ -292,11 +293,13 @@ Please refer to the later sections.
 Vortex utilizes a fully free form syntax. Whitespace of any form is ignored,
 used only to delimit tokens where it would otherwise be ambiguous.
 \subsection{Encoding}
-\begin{lstlisting}[language=bnf]
-alpha    ::= 'a-zA-Z'
-digit    ::= '0-9'
-hexdigit ::= '0-9a-fA-F'
-\end{lstlisting}
+\begin{bnf}
+<alpha> ::= \lit{a-zA-Z}
+
+<digit> ::= \lit{0-9}
+
+<hexdigit> ::= \lit{0-9a-fA-F}
+\end{bnf}
 The input is a sequence of bytes. Vortex does not handle Unicode in any way,
 but it's UTF-8 clean. All of the grammar is confined to the ASCII. Because
 it's UTF-8 clean, Unicode strings and such are allowed and passed to the
@@ -304,9 +307,14 @@ output without any processing. If an UTF-8 BOM is found, it's skipped
 automatically. If a shebang line is found in the beginning, it's skipped
 as well.
 \subsection{Whitespace}
-\begin{lstlisting}[language=bnf]
-whitespace ::= ' ' | '\n' | '\r' | '\t' | '\f' | '\v'
-\end{lstlisting}
+\begin{bnf}
+<whitespace> ::= \lit{ }
+    \alt \lit{\\n}
+    \alt \lit{\\r}
+    \alt \lit{\\t}
+    \alt \lit{\\f}
+    \alt \lit{\\v}
+\end{bnf}
 The Vortex lexer does not care about whitespace for anything else than token
 separation. Whitespace is not needed to separate tokens; the source is simply
 read character by character and when a token ending is found, it just goes on
@@ -318,67 +326,155 @@ return can be used in pairs no matter what order (handles the common cases
 '\textbackslash n\textbackslash r' for rare platforms).
 \subsection{Comments}
 % ugly textcolor hack to make some editors happy with escaped $
-\begin{lstlisting}[language=bnf,mathescape]
-comment ::= '//' /.*$\textcolor{string}{\$}$/ | '/*' { /./ | comment } '*/'
-\end{lstlisting}
+\begin{bnf}
+<comment> ::= \lit{//} /.*\$/
+    \alt \lit{/*} \{ /./ | <comment> \} \lit{*/}
+\end{bnf}
 Vortex uses C(++) style comments. Short comments comment out everything until
 the end of the line. Long comment can span multiple lines and are enclosed
 between delimiters. Unlike C(++), Vortex allows for nesting of comments
 (thus it requires you to keep them balanced). Comments do not get past
 lexical analysis.
 \subsection{Identifiers}
-\begin{lstlisting}[language=bnf]
-ident ::= ('_' | alpha) { '_' | alpha | digit }
-identlist ::= [ ident { ',' ident } ]
-\end{lstlisting}
+\begin{bnf}
+<ident> ::= (\lit{_} | <alpha>) \{ \lit{_} | <alpha> | <digit> \}
+
+<identlist> ::= <ident> \{ \lit{,} <ident> \}
+\end{bnf}
 Vortex identifiers (names) can consist of alphanumeric characters (ASCII only)
 and underscores. They can't start with a digit, but a digit can be present
 anywhere else in the identifier. Identifiers starting with an underscore
 followed by an uppercase character are reserved. This is by convention and
 not enforced by the compiler.
 \subsection{Keywords}
-\begin{lstlisting}[language=bnf]
-opkeyword ::= 'band' | 'bor' | 'bxor' | 'asr' | 'bsr' | 'bsl'
-            | 'and' | 'or'
-opkeywordass ::= 'band=' | 'bor=' | 'bxor=' | 'asr=' | 'bsr='
-               | 'bsl='
-keyword ::= 'as' | 'break' | 'case' | 'cfn' | 'clone' | 'coro'
-          | 'cycle' | 'do' | 'else' | 'end' | 'enum' | 'false'
-          | 'fn' | 'for' | 'glob' | 'goto' | 'if' | 'in' | 'let'
-          | 'loop' | 'macro' | 'match' | 'module' | 'new' | 'nil'
-          | 'quote' | 'rec' | 'redo' | 'result' | 'return' | 'seq'
-          | 'set' | 'true' | 'unquote' | 'when' | 'while' | 'with'
-          | 'yield' | '__FILE__' | '__LINE__' | opkeyword
-          | opkeywordass | unopkeyword
-unopkeyword ::= 'not' | 'bnot'
-\end{lstlisting}
+\begin{bnf}
+<opkeyword> ::= \lit{band}
+    \alt \lit{bor}
+    \alt \lit{bxor}
+    \alt \lit{asr}
+    \alt \lit{bsr}
+    \alt \lit{bsl}
+    \alt \lit{and}
+    \alt \lit{or}
+
+<opkeywordass> ::= \lit{band=}
+    \alt \lit{bor=}
+    \alt \lit{bxor=}
+    \alt \lit{asr=}
+    \alt \lit{bsr=}
+    \alt \lit{bsl=}
+
+<keyword> ::= \lit{as}
+    \alt \lit{break}
+    \alt \lit{case}
+    \alt \lit{cfn}
+    \alt \lit{clone}
+    \alt \lit{coro}
+    \alt \lit{cycle}
+    \alt \lit{do}
+    \alt \lit{else}
+    \alt \lit{end}
+    \alt \lit{enum}
+    \alt \lit{false}
+    \alt \lit{fn}
+    \alt \lit{for}
+    \alt \lit{glob}
+    \alt \lit{goto}
+    \alt \lit{if}
+    \alt \lit{in}
+    \alt \lit{let}
+    \alt \lit{loop}
+    \alt \lit{macro}
+    \alt \lit{match}
+    \alt \lit{module}
+    \alt \lit{new}
+    \alt \lit{nil}
+    \alt \lit{quote}
+    \alt \lit{rec}
+    \alt \lit{redo}
+    \alt \lit{result}
+    \alt \lit{return}
+    \alt \lit{seq}
+    \alt \lit{set}
+    \alt \lit{true}
+    \alt \lit{unquote}
+    \alt \lit{when}
+    \alt \lit{while}
+    \alt \lit{with}
+    \alt \lit{yield}
+    \alt \lit{__FILE__}
+    \alt \lit{__LINE__}
+    \alt <opkeyword>
+    \alt <opkeywordass>
+    \alt <unopkeyword>
+
+<unopkeyword> ::= \lit{not}
+    \alt \lit{bnot}
+\end{bnf}
 These are \enquote{reserved words} in Vortex. They cannot be used as
 identifiers. Some of these specified in \verb|opkeyword| have an assignment
 form. Vortex is case sensitive, the keywords only are keywords in lowercase.
 For example, \verb|match| is a keyword but \verb|MATCH| or \verb|Match| can
 be used as valid identifiers.
 \subsection{Other tokens}
-\begin{lstlisting}[language=bnf]
-binop ::= '=' | '==' | '>' | '>=' | '<' | '<=' | '!=' | '%' | '~'
-        | '+' | '++' | '*' | '**' | '-' | '/' | '::'
-        | opkeyword
-assop ::= '~=' | '+=' | '++=' | '*=' | '**=' | '-=' | '/=' | '::='
-        | '%=' | opkeywordass
-unop ::= '-' | 'not' | '#' | unopkeyword
-valuetok ::= <string> | <number> | <ident>
-othertok ::= '(' | ')' | '->' | '.' | '..' | '...' | ';' | ';;'
-           | '$' | '$(' | <eos>
-\end{lstlisting}
+\begin{bnf}
+<binop> ::= \lit{=}
+    \alt \lit{==}
+    \alt \lit{\textgreater}
+    \alt \lit{\textgreater=}
+    \alt \lit{\textless}
+    \alt \lit{\textless=}
+    \alt \lit{!=}
+    \alt \lit{\%}
+    \alt \lit{~}
+    \alt \lit{+}
+    \alt \lit{++}
+    \alt \lit{*}
+    \alt \lit{**}
+    \alt \lit{-}
+    \alt \lit{/}
+    \alt \lit{::}
+    \alt <opkeyword>
+
+<assop> ::= \lit{~=}
+    \alt \lit{+=}
+    \alt \lit{++=}
+    \alt \lit{*=}
+    \alt \lit{**=}
+    \alt \lit{-=}
+    \alt \lit{/=}
+    \alt \lit{::=}
+    \alt \lit{\%=}
+    \alt <opkeywordass>
+
+<unop> ::= \lit{-}
+    \alt \lit{\#}
+    \alt <unopkeyword>
+
+<othertok> ::= \lit{(}
+    \alt \lit{)}
+    \alt \lit{->}
+    \alt \lit{.}
+    \alt \lit{..}
+    \alt \lit{...}
+    \alt \lit{;}
+    \alt \lit{;;}
+    \alt \lit{\$}
+    \alt \lit{\$(}
+\end{bnf}
 Here you can see all the other tokens used by Vortex with separate categories
-for binary, unary and assignment operators and tokens holding a value.
+for binary, unary and assignment operators.
 \subsection{Number literals}
-\begin{lstlisting}[language=bnf]
-hexnum ::= ('0x' | '0X') { hexdigit } [ '.' ] { hexdigit }
-    [ ('p' |'P') [ '+' |'-' ] digit ]
-decnum ::= { digit } [ '.' ] { digit } [ ('e' | 'E')
-    [ '+' | '-' ] digit ]
-numliteral ::= hexnum | decnum
-\end{lstlisting}
+\begin{bnf}
+<hexnum> ::= (\lit{0x} | \lit{0X}) \{ <hexdigit> \} [ \lit{.} ]
+    \{ <hexdigit> \} [ (\lit{p} | \lit{P}) [ \lit{+} | \lit{-} ] <digit> ]
+
+<decnum> ::= \{ <digit> \} [ \lit{.} ] \{ <digit> \} [ (\lit{e} | \lit{E})
+    [ \lit{+} | \lit{-} ] <digit> ]
+
+<numliteral> ::= <hexnum>
+    \alt <decnum>
+\end{bnf}
 Vortex does not make a difference between integers and floats. Numbers follow
 the Lua format. Hexadecimal numbers start with \verb|0x| or \verb|0X| (the
 former is better). In numbers like \verb|0.6| you can omit the zero and write
@@ -386,16 +482,37 @@ just \verb|.6|. Hexadecimal constants behave similarly. Optional decimal
 exponent is marked with \verb|e| or \verb|E| (binary exponent in hex constants
 is \verb|p| or \verb|P|).
 \subsection{String literals}
-\begin{lstlisting}[language=bnf]
-strliteral   ::= strprefix (strlong | strshort)
-strprefix    ::= /[eErR]*/
-strshort     ::= '"' strshortelem '"' | "'" strshortelem "'"
-strlong      ::= '"""' strlongelem '"""' | "'''" strlongelem "'''"
-strshortelem ::= ? short string contents ? | stresc
-strlongelem  ::= ? long string contents ? | stresc
-stresc       ::= '\\a' | '\\b' | '\\f' | '\\n' | '\\r' | '\\t'
-               | '\\v' | '\\z' | '\\"' | "\\'" | '\\'
-\end{lstlisting}
+\begin{bnf}
+<strliteral> ::= <strprefix> (<strlong> | <strshort>)
+
+<strprefix> ::= /[eErR]*/
+
+<strshort> ::= \lit{\textquotedbl} <strshortelem> \lit{\textquotedbl}
+    \alt \lit{\textquotesingle} <strshortelem> \lit{\textquotesingle}
+
+<strlong> ::= \lit{\textquotedbl\textquotedbl\textquotedbl} <strlongelem>
+        \lit{\textquotedbl\textquotedbl\textquotedbl}
+    \alt \lit{\textquotesingle\textquotesingle\textquotesingle} <strlongelem>
+        \lit{\textquotesingle\textquotesingle\textquotesingle}
+
+<strshortelem> ::= ? short string contents ?
+    \alt <stresc>
+
+<strlongelem> ::= ? long string contents ?
+    \alt <stresc>
+
+<stresc> ::= \lit{\\a}
+    \alt \lit{\\b}
+    \alt \lit{\\f}
+    \alt \lit{\\n}
+    \alt \lit{\\r}
+    \alt \lit{\\t}
+    \alt \lit{\\v}
+    \alt \lit{\\z}
+    \alt \lit{\\\textquotedbl}
+    \alt \lit{\\\textquotesingle}
+    \alt \lit{\\}
+\end{bnf}
 String literals in Vortex are similar to Python's. They are represented by the
 \verb|<string>| token in the final stream. There are two types of string
 literals, short and long literals.\\
@@ -443,10 +560,11 @@ sequence \verb|\ddd| where \verb|ddd| is a sequence of up to three decimal
 digits (\verb|\79| would be the uppercase O).
 
 \section{Expressions}
-\begin{lstlisting}[language=bnf]
-exp ::= statexp
-explist ::= [ exp { ',' exp } ]
-\end{lstlisting}
+\begin{bnf}
+<exp> ::= <statexp>
+
+<explist> ::= [ <exp> \{ \lit{,} exp \} ]
+\end{bnf}
 Vortex is a language that consists purely of expressions. No statements are
 present in the language in that sense an expression of any type can appear
 in any context. One exception is block scopes. Only expressions that can
@@ -456,33 +574,40 @@ The rationale for this is that doing it otherwise doesn't really make sense
 -- allowing inclusion of arbitrary expressions in blocks would result in code
 doing nothing, and that's better filtered out at compile time.
 \subsection{Main scope}
-\begin{lstlisting}[language=bnf]
-chunk ::= { statexp [ ';' ] } [ (retexp | resexp) [ ';' ] ]
-\end{lstlisting}
+\begin{bnf}
+<chunk> ::= \{ <statexp> [ \lit{;} ] \} [ (<retexp> | <resexp>) [ \lit{;} ] ]
+\end{bnf}
 The parsing of Vortex begins in the main scope. The main scope is a chunk.
 A chunk is a sequence of side effect based expressions optionally separated
 with semicolons. It may be ended with either a \verb|return| or a \verb|result|
 expression. Having another expression after one of these results in syntax
 error.
 \subsection{Blocks}
-\begin{lstlisting}[language=bnf]
-blockend ::= 'end' | ';;'
-block    ::= 'do' chunk blockend
-statexp  ::= block
-\end{lstlisting}
+\begin{bnf}
+<blockend> ::= \lit{end} | \lit{;;}
+
+<block> ::= \lit{do} <chunk> <blockend>
+
+<statexp> ::= <block>
+\end{bnf}
 Blocks represent chains of expressions. A block consists of a \verb|do|
 keyword, a chunk (see above) and either an \verb|end| keyword or two
 semicolons. The semicolon ending is useful in inline blocks or in
 Lisp style formatted code. Blocks themselves are expressions. The \verb|result|
 expression can be used to specify their value.
 \subsection{Binary and unary expressions}
-\begin{lstlisting}[language=bnf]
-assexp  ::= (ident | indexp) assop exp
-binexp  ::= exp binop exp
-unexp   ::= unop exp
-exp     ::= binexp | unexp
-statexp ::= assexp
-\end{lstlisting}
+\begin{bnf}
+<assexp> ::= (<ident> | <indexp>) <assop> <exp>
+
+<binexp> ::= <exp> <binop> <exp>
+
+<unexp> ::= <unop> <exp>
+
+<exp> ::= <binexp>
+    \alt <unexp>
+
+<statexp> ::= <assexp>
+\end{bnf}
 Binary expressions are expressions that consist of two operands and an
 operator. The operator is in infix form. The BNF here does not describe
 operator precedences. Assignment operators are treated differently as
@@ -525,13 +650,21 @@ bitwise OR, bitwise XOR, arithmetic right shift, bitwise right shift and
 bitwise left shift respectively. The rest of the operators is functionally
 equivalent to those in C.
 \subsection{Primary expressions}
-\begin{lstlisting}[language=bnf]
-primaryexp ::= '(' exp ')' | tableexp | listexp | '$(' exp ')'
-             | '$' ident | ident [ '!' '(' explist ')' ]
-             | numliteral | strliteral | 'nil' | 'true'
-             | 'false'
-exp ::= primaryexp
-\end{lstlisting}
+\begin{bnf}
+<primaryexp> ::= \lit{(} <exp> \lit{)}
+    \alt <tableexp>
+    \alt <listexp>
+    \alt \lit{\$(} <exp> \lit{)}
+    \alt \lit{\$} <ident>
+    \alt <ident> [ \lit{!} \lit{(} <explist> \lit{)} ]
+    \alt <numliteral>
+    \alt <strliteral>
+    \alt \lit{nil}
+    \alt \lit{true}
+    \alt \lit{false}
+
+<exp> ::= <primaryexp>
+\end{bnf}
 Primary expressions are simple expressions that can have a suffix. A suffix
 is for example a parameter list (a call), brackets with an expression
 (indexing) or a dot (simple indexing). Primary expressions typically don't
@@ -540,16 +673,27 @@ as a call. You can wrap any arbitrary expression in parens to get a primary
 expression. All types of simple literals as well as table and list literals
 and macro expansions are primary expressions.
 \subsection{Suffixed expressions}
-\begin{lstlisting}[language=bnf]
-fcallsuffix ::= '(' explist ')' | tableexp | strliteral
-mcallsuffix ::= ':' ident fcallsuffix
-tcallsuffix ::= fcallsuffix | mcallsuffix
-indexsuffix ::= '.' ident | '[' exp ']'
-expsuffix   ::= [ expsuffix ] (indexsuffix | tcallsuffix)
-suffixedexp ::= primaryexp expsuffix
-exp         ::= suffixedexp
-statexp     ::= suffixedexp tcallsuffix
-\end{lstlisting}
+\begin{bnf}
+<fcallsuffix> ::= \lit{(} <explist> \lit{)}
+    \alt <tableexp>
+    \alt <strliteral>
+
+<mcallsuffix> ::= \lit{:} <ident> <fcallsuffix>
+
+<tcallsuffix> ::= <fcallsuffix>
+    \alt <mcallsuffix>
+
+<indexsuffix> ::= \lit{.} <ident>
+    \alt \lit{[} <exp> \lit{]}
+
+<expsuffix> ::= [ <expsuffix> ] (<indexsuffix> | <tcallsuffix>)
+
+<suffixedexp> ::= <primaryexp> <expsuffix>
+
+<exp> ::= <suffixedexp>
+
+<statexp> ::= <suffixedexp> <tcallsuffix>
+\end{bnf}
 Suffixed expressions are primary expressions with a suffix. A suffix
 represents either a call or indexing. Suffixes can be chained. In statement
 form, only calls are allowed (not indexing alone). Indexing can be represented
@@ -566,11 +710,13 @@ you can omit the parens. That means writing \verb|funcname "foo"| and
 \verb|funcname { 5, 10, 15 }| is equivalent to \verb|funcname("foo")| and
 \verb|funcname({ 5, 10, 15 })| respectively.
 \subsection{Let expression}
-\begin{lstlisting}[language=bnf]
-lettype ::= 'rec' | 'glob'
-letexp  ::= 'let' [ lettype ] (pattern | '(' patternlist ')')
-    '=' (suffixedexp | '(' explist ')')
-\end{lstlisting}
+\begin{bnf}
+<lettype> ::= \lit{rec}
+    \alt \lit{glob}
+
+<letexp> ::= \lit{let} [ <lettype> ] (<pattern> | \lit{(} <patternlist>
+    \lit{)}) \lit{=} (<suffixedexp> | \lit{(} <explist> \lit{)})
+\end{bnf}
 The \verb|let| expression provides means to declare and define variables.
 It consists of the keyword, a pattern or a pattern list enclosed in parens,
 an assignment operator and either a suffixed expression or an expression
@@ -598,15 +744,21 @@ let [ a, b ] = foo() // a is 5, b is 10 - pattern usage
 fn rec bar() -> bar() // recursive
 \end{lstlisting}
 \subsection{Functions}
-\begin{lstlisting}[language=bnf]
-defarglist ::= [ ident '=' exp { ',' ident '=' exp } ]
-arglist    ::= identlist defarglist [ [ ident ] '...' ]
-fnliteral  ::= 'fn' (arglist | '(' arglist ')') ('->' exp | block)
-fndef      ::= 'fn' ([ lettype ] ident | ident [ '.' ident ])
-    '(' arglist ')' ('->' exp | block)
-statexp    ::= fndef
-exp        ::= fnliteral
-\end{lstlisting}
+\begin{bnf}
+<defarglist> ::= <ident> \lit{=} <exp> \{ \lit{,} <ident> \lit{=} <exp> \}
+
+<arglist> ::= [ <identlist> ] [ <defarglist> ] [ [ <ident> ] \lit{...} ]
+
+<fnliteral> ::= \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)})
+    (\lit{->} <exp> | <block>)
+
+<fndef> ::= \lit{fn} ([ <lettype> ] <ident> | <ident> [ \lit{.} <ident> ])
+    \lit{(} <arglist> \lit{)} (\lit{->} <exp> | <block>)
+
+<statexp> ::= <fndef>
+
+<exp> ::= <fnliteral>
+\end{bnf}
 Vortex features first class functions. That means a function can be treated
 as a first class citizen -- you can pass it as an argument or return it from
 another function. Like in Lua, functions are passed by reference -- you never
