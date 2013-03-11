@@ -588,6 +588,8 @@ error.
 
 <block> ::= \lit{do} <chunk> <blockend>
 
+<expscope> ::= \lit{->} <exp> | <block>
+
 <statexp> ::= <block>
 \end{bnf}
 Blocks represent chains of expressions. A block consists of a \verb|do|
@@ -595,6 +597,41 @@ keyword, a chunk (see above) and either an \verb|end| keyword or two
 semicolons. The semicolon ending is useful in inline blocks or in
 Lisp style formatted code. Blocks themselves are expressions. The \verb|result|
 expression can be used to specify their value.
+\subsection{Return and result expressions}
+\begin{bnf}
+<exporlist> ::= (<suffixedexp> | \lit{(} <explist> \lit{)})
+
+<retexp> ::= \lit{return} <exporlist>
+
+<resexp> ::= \lit{result} <exporlist>
+
+<statexp> ::= <retexp> <resexp>
+\end{bnf}
+These two expressions are used to manipulate values. The \verb|return|
+expression jumps out of a function, making it return value(s) (in the main
+scope it makes the module return a value later used with \verb|require|).\\
+The \verb|result| expression is very similar at first. It however works on
+scope level -- it basically sets a value the current block will evaluate to.
+With regular functions, this is pretty much the same (as a block is typically
+a function return value) but you can see the difference when working with
+expression blocks. For example:
+\begin{lstlisting}[language=vortex]
+// this function returns 7, x is 5.
+fn foo() do
+    let x = do
+        result 5
+    end
+    return x + 2
+end
+
+// this function returns 5, never reaching the final return.
+fn bar() do
+    let x = do
+        return 5
+    end
+    return x + 2
+end
+\end{lstlisting}
 \subsection{Binary and unary expressions}
 \begin{bnf}
 <assexp> ::= (<ident> | <indexp>) <assop> <exp>
@@ -715,7 +752,9 @@ you can omit the parens. That means writing \verb|funcname "foo"| and
     \alt \lit{glob}
 
 <letexp> ::= \lit{let} [ <lettype> ] (<pattern> | \lit{(} <patternlist>
-    \lit{)}) \lit{=} (<suffixedexp> | \lit{(} <explist> \lit{)})
+    \lit{)}) \lit{=} <exporlist>
+
+<statexp> ::= <letexp>
 \end{bnf}
 The \verb|let| expression provides means to declare and define variables.
 It consists of the keyword, a pattern or a pattern list enclosed in parens,
@@ -743,17 +782,65 @@ fn foo() -> [ 5, 10, 15 ]
 let [ a, b ] = foo() // a is 5, b is 10 - pattern usage
 fn rec bar() -> bar() // recursive
 \end{lstlisting}
+\subsection{Set expression}
+\begin{bnf}
+<setexp> ::= \lit{set} <exporlist> <assop> <exporlist>
+
+<statexp> ::= <setexp>
+\end{bnf}
+The \verb|set| expression assigns values to variables. To assign a single
+variable, you can use the regular assignment binary expression. The \verb|set|
+expression is used to set multiple variables at once. Like an assignment
+expression, the expressions on the left have to be lvalues. This expression
+looks quite similar to the \verb|let| expression.\\
+The main benefit of setting multiple variables at once is for e.g. swapping
+values. Consider this:
+\begin{lstlisting}[language=vortex]
+let a = 5
+let b = 10
+// now let's swap a and b
+let tmp = a
+a = b
+b = tmp
+\end{lstlisting}
+This doesn't look too good. Isn't there a better way? Of course there is.
+\begin{lstlisting}[language=vortex]
+let a = 5
+let b = 10
+// and now let's swap
+set (a, b) = (b, a)
+\end{lstlisting}
+Much better, right? The \verb|set| expression evaluates to its left side
+after assignment.
+\subsection{With expression}
+\begin{bnf}
+<withexp> ::= \lit{with} (<pattern> | \lit{(} <patternlist> \lit{)})
+    \lit{=} <exporlist> <expscope>
+
+<statexp> ::= <withexp>
+\end{bnf}
+This expression is sort of similar to \verb|let|. It represents a scope-bound
+variable. Unlike \verb|let|, it doesn't evaluate to its left side, but instead
+to its expression. Consider this:
+\begin{lstlisting}[language=vortex]
+let x = with y = a() do
+    print("hello world!")
+    result 5
+end
+\end{lstlisting}
+Here, the variable \verb|y| is bound to the \verb|with| expression scope, being
+invisible from anywhere else. The variable \verb|x| will be \verb|5|. Note that
+the scope will always evaluate, even when \verb|y| is \verb|nil|.
 \subsection{Functions}
 \begin{bnf}
 <defarglist> ::= <ident> \lit{=} <exp> \{ \lit{,} <ident> \lit{=} <exp> \}
 
 <arglist> ::= [ <identlist> ] [ <defarglist> ] [ [ <ident> ] \lit{...} ]
 
-<fnliteral> ::= \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)})
-    (\lit{->} <exp> | <block>)
+<fnliteral> ::= \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)}) <expscope>
 
 <fndef> ::= \lit{fn} ([ <lettype> ] <ident> | <ident> [ \lit{.} <ident> ])
-    \lit{(} <arglist> \lit{)} (\lit{->} <exp> | <block>)
+    \lit{(} <arglist> \lit{)} <expscope>
 
 <statexp> ::= <fndef>
 
@@ -827,6 +914,17 @@ fn printf(fmt, ...) do
     print(fmt:format(...))
 end
 \end{lstlisting}
+Note that to pass all the variadic arguments to a function, the ellipsis
+must be the last argument of the function call. Otherwise just the first
+value of the tuple will be passed! You can make it pass a single value
+anywhere by capturing it in \verb|let|, for example
+\begin{lstlisting}[language=vortex]
+print("Only the first value", let _ = (...))
+\end{lstlisting}
+Lua allows you to do this by wrapping the ellipsis in parens. I consider
+that quite dangerous and bug-prone, thus Vortex doesn't allow this. While
+wrapping the ellipsis in parens in legal, it'll always evaluate to multiple
+values, no matter what.\\
 You can name the vararg tuple and pass it around as a table like this:
 \begin{lstlisting}[language=vortex]
 fn foo(a, b...) do
@@ -840,6 +938,37 @@ fn foo(a, ...) do
     print(a, b[1], b[2])
 end
 \end{lstlisting}
+\subsection{If expression}
+\begin{bnf}
+<ifblock> ::= \lit{do} <chunk>
+
+<elseopt> ::= \lit{else} [ \lit{->} ] exp
+
+<elsestatopt> ::= \lit{else} [ \lit{->} ] statexp
+
+<ifexp> ::= \lit{if} <exp> (\lit{->} <exp> [ <elseopt> ] |
+    <ifblock> (\lit{end} | <elseopt>))
+
+<ifstat> ::= \lit{if} <exp> (\lit{->} <statexp> [ <elsestatopt> ] |
+    <ifblock> (\lit{end} | <elsestatopt>))
+
+<statexp> ::= <ifstat>
+
+<exp> ::= <ifexp>
+\end{bnf}
+The \verb|if| expression allows you to do structured programming by
+incorporating conditionals. Every \verb|if| expression begins with the
+keyword, followed by a condition. The condition evaluates to either \verb|true|
+or \verb|false|. If it evaluates to \verb|true|, it either evaluates to the
+expression that follows the condition (when in expression form) or simply
+executes the expression in statement form (in that case, only statement
+form expressions are allowed).\\
+There can be an optional \verb|else| part. That part is evaluated when the
+condition is not met and has the same semantics as the former. Note that the
+arrow is optional with \verb|else|, even with regular expressions.\\
+When using \verb|if| with blocks and without arrows, the \verb|else| keyword
+implicitly terminates the block scope. Using \verb|end| explicitly ends the
+\verb|if| expression.
 
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
