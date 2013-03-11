@@ -590,6 +590,8 @@ error.
 
 <expscope> ::= \lit{->} <exp> | <block>
 
+<statscope> ::= \lit{->} <statexp> | <block>
+
 <statexp> ::= <block>
 \end{bnf}
 Blocks represent chains of expressions. A block consists of a \verb|do|
@@ -817,7 +819,12 @@ after assignment.
 <withexp> ::= \lit{with} (<pattern> | \lit{(} <patternlist> \lit{)})
     \lit{=} <exporlist> <expscope>
 
-<statexp> ::= <withexp>
+<withstat> ::= \lit{with} (<pattern> | \lit{(} <patternlist> \lit{)})
+    \lit{=} <exporlist> <statscope>
+
+<statexp> ::= <withstat>
+
+<exp> ::= <withexp>
 \end{bnf}
 This expression is sort of similar to \verb|let|. It represents a scope-bound
 variable. Unlike \verb|let|, it doesn't evaluate to its left side, but instead
@@ -969,7 +976,111 @@ arrow is optional with \verb|else|, even with regular expressions.\\
 When using \verb|if| with blocks and without arrows, the \verb|else| keyword
 implicitly terminates the block scope. Using \verb|end| explicitly ends the
 \verb|if| expression.
+\subsection{Loops}
+\begin{bnf}
+<loopcond> ::= \lit{while} <exp>
 
+<loopexp> ::= \lit{loop} [ <loopcond> ] <statscope> [ <loopcond> ]
+
+<numforexp> ::= \lit{for} <ident> \lit{=} <exp> \lit{..} <exp>
+    [ \lit{,} <exp> ] <statscope>
+
+<genforexp> ::= \lit{for} <identlist> \lit{in} <explist> <statscope>
+
+<statexp> ::= <loopexp>
+    \alt <numforexp>
+    \alt <genforexp>
+\end{bnf}
+Vortex has three types of loops. The simplest one is the \verb|loop| loop.
+By default, it loops like this:
+\begin{lstlisting}[language=vortex]
+loop do
+    print("I'm infinite!")
+end
+\end{lstlisting}
+You can add two kinds of conditions to this kind of loop, a regular condition
+and a postcondition. Both work similarly, but with the postcondition the loop
+iterates at least once before evaluating the condition (it evaluates AFTER
+iteration) while with the regular condition it may never start (it evaluates
+BEFORE iteration). You can use both at once. Example:
+\begin{lstlisting}[language=vortex]
+let i = 1
+let keep_iteratng = false
+
+fn check_iterate() -> true
+
+loop while i <= 10 do
+    print("I'm no longer infinite...")
+    i += 1
+    keep_iterating = check_iterate()
+end while keep_iterating
+\end{lstlisting}
+Then there is the numeric \verb|for| loop. It iterates using a numeric range.
+Both the start and the end of the range are inclusive. For example:
+\begin{lstlisting}[language=vortex]
+for i = 1 .. 10 do
+    print(i)
+end
+\end{lstlisting}
+This prints numbers from one to ten. There is an optional third \endquote{step}
+expression. By default it's 1.
+\begin{lstlisting}[language=vortex]
+// 0, 2, 4, 6, 8, 10
+for i = 0 .. 10, 2 do
+    print(i)
+end
+\end{lstlisting}
+The loop never re-evaluates the input expressions -- they're evaluated once
+when the loop starts. The \verb|step| is particularly useful for backwards
+iteration. Writing
+\begin{lstlisting}[language=vortex]
+for i = start, stop, step -> statexp
+\end{lstlisting}
+is equivalent to
+\begin{lstlisting}[language=vortex]
+do
+    let (start, stop, step) =
+        (tonum(start), tonum(stop), tonum(step or 1))
+    if not (start and stop and step) -> error()
+    loop while (step > 0 and start <= stop)
+    or (step <= 0 and start >= stop) do
+        let v = start
+        statexp
+        start += step
+    end
+end
+\end{lstlisting}
+Finally, there is the generic \verb|for| loop. It uses iterators and is
+compatible with Lua iterators. You have a list of identifiers (you can have
+as many as you want as long as the iterator handles them all). Then you have
+the expression list, which is typically a single expression (an iterator).
+Each iteration the iterator is called, returning a new set of values mapping
+to the inputs. Writing
+\begin{lstlisting}[language=vortex]
+for k, v in pairs(tbl) -> statexp
+\end{lstlisting}
+is equialent to
+\begin{lstlisting}[language=vortex]
+do
+    let (fun, s, var) = pairs(tbl)
+    loop do
+        let (k, v) = fun(s, var)
+        if k == nil -> break
+        var = k
+        statexp
+    end
+end
+\end{lstlisting}
+All types of loops accept both arrow notation and blocks, but even in arrow
+notation and expression form the expression past the arrow ALWAYS must be
+a statement. A loop is an expression, but it evaluates to \verb|nil|.\\
+You can control the loop using three expressions, \verb|break|, \verb|cycle|
+and \verb|redo|. Using \verb|break| you can stop the iteration at that point.
+Using \verb|cycle| you can skip to the next iteration, incrementing counters
+or calling iterator as needed. Using \verb|redo| you can achieve a similar
+thing, but no counter is ever incremented (or iterator called), effectively
+restarting the current iteration. The \verb|cycle| keyword is equivalent to
+\verb|continue| in several other languages (such as C, C++ or JavaScript).
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
 combined into a single script. By default it launches an interactive session.
