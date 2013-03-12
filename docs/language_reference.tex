@@ -1081,6 +1081,48 @@ or calling iterator as needed. Using \verb|redo| you can achieve a similar
 thing, but no counter is ever incremented (or iterator called), effectively
 restarting the current iteration. The \verb|cycle| keyword is equivalent to
 \verb|continue| in several other languages (such as C, C++ or JavaScript).
+\subsection{Pattern matching}
+\begin{bnf}
+<objectpatitem> ::= ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    [ \lit{:} ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)}) ]
+
+<primarypattern> ::= \lit{(} <pattern> \lit{)}
+    \alt <strliteral>
+    \alt <numliteral>
+    \alt \lit{true}
+    \alt \lit{false}
+    \alt \lit{nil}
+    \alt [ \lit{\$} ] <ident> [ \lit{(} { <objectpattern> } \lit{)} ]
+    \alt \lit{\$(} <exp> \lit{)} [ \lit{(} { <objectpatitem> } \lit{)} ]
+    \alt <tablepattern>
+
+<suffixedpattern> ::= <primarypattern>
+    \alt <suffixedpattern> \lit{when} <exp>
+    \alt <suffixedpattern> \lit{as} <exp>
+
+<patternop> ::= \lit{and}
+    \alt \lit{or}
+    \alt \lit{::}
+
+<pattern> ::= <suffixedpattern> [ <patternop> <suffixedpattern> ]
+
+<matchexp> ::= \lit{match} <explist> \lit{->} <matchbody>
+
+<matchstat> ::= \lit{match} <explist> \lit{->} <matchbodystat>
+
+<matcharm> ::= (\lit{|} | \lit{case}) <patternlist> <expscope>
+
+<matcharmstat> ::= (\lit{|} | \lit{case}) <patternlist> <statscope>
+
+<matchbody> ::= <matcharm> { <matcharm> }
+
+<matchbodystat> ::= <matcharmstat> { <matcharmstat> }
+
+<exp> ::= <matchexp>
+
+<statexp> ::= <matchstat>
+\end{bnf}
+
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
 combined into a single script. By default it launches an interactive session.
