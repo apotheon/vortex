@@ -563,7 +563,7 @@ digits (\verb|\79| would be the uppercase O).
 \begin{bnf}
 <exp> ::= <statexp>
 
-<explist> ::= [ <exp> \{ \lit{,} exp \} ]
+<explist> ::= [ <exp> \{ \lit{,} <exp> \} ]
 \end{bnf}
 Vortex is a language that consists purely of expressions. No statements are
 present in the language in that sense an expression of any type can appear
@@ -688,6 +688,13 @@ of the given expression, \verb|**| raises lhs to a power of rhs. \verb|band|,
 bitwise OR, bitwise XOR, arithmetic right shift, bitwise right shift and
 bitwise left shift respectively. The rest of the operators is functionally
 equivalent to those in C.
+\subsection{Tables and lists}
+\begin{bnf}
+<tableitem> ::= <exp>
+
+<tableexp> ::= \lit{\{} [ <tableitem> \{ \lit{,} <tableitem> \} ] \lit{\}}
+\end{bnf}
+
 \subsection{Primary expressions}
 \begin{bnf}
 <primaryexp> ::= \lit{(} <exp> \lit{)}
@@ -1086,14 +1093,16 @@ restarting the current iteration. The \verb|cycle| keyword is equivalent to
 <objectpatitem> ::= ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
     [ \lit{:} ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)}) ]
 
+<objectpatbody> ::= <objectpatitem> \{ \lit{,} <objectpatitem> \}
+
 <primarypattern> ::= \lit{(} <pattern> \lit{)}
     \alt <strliteral>
     \alt <numliteral>
     \alt \lit{true}
     \alt \lit{false}
     \alt \lit{nil}
-    \alt [ \lit{\$} ] <ident> [ \lit{(} { <objectpattern> } \lit{)} ]
-    \alt \lit{\$(} <exp> \lit{)} [ \lit{(} { <objectpatitem> } \lit{)} ]
+    \alt [ \lit{\$} ] <ident> [ \lit{(} [ <objectpatbody> ] \lit{)} ]
+    \alt \lit{\$(} <exp> \lit{)} [ \lit{(} [ <objectpatbody> ] \lit{)} ]
     \alt <tablepattern>
 
 <suffixedpattern> ::= <primarypattern>
@@ -1114,9 +1123,9 @@ restarting the current iteration. The \verb|cycle| keyword is equivalent to
 
 <matcharmstat> ::= (\lit{|} | \lit{case}) <patternlist> <statscope>
 
-<matchbody> ::= <matcharm> { <matcharm> }
+<matchbody> ::= <matcharm> \{ <matcharm> \}
 
-<matchbodystat> ::= <matcharmstat> { <matcharmstat> }
+<matchbodystat> ::= <matcharmstat> \{ <matcharmstat> \}
 
 <exp> ::= <matchexp>
 
