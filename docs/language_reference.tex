@@ -1146,15 +1146,19 @@ restarting the current iteration. The \verb|cycle| keyword is equivalent to
 
 <objectpatbody> ::= <objectpatitem> \{ \lit{,} <objectpatitem> \}
 
+<tablepatitem> ::= [ ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    \lit{:} ] <pattern>
+
 <primarypattern> ::= \lit{(} <pattern> \lit{)}
     \alt <strliteral>
     \alt <numliteral>
     \alt \lit{true}
     \alt \lit{false}
     \alt \lit{nil}
+    \alt \lit{_}
     \alt [ \lit{\$} ] <ident> [ \lit{(} [ <objectpatbody> ] \lit{)} ]
     \alt \lit{\$(} <exp> \lit{)} [ \lit{(} [ <objectpatbody> ] \lit{)} ]
-    \alt <tablepattern>
+    \alt \lit{\{} <tablepatitem> \{ \lit{,} <tablepatitem> \} \lit{\}}
 
 <suffixedpattern> ::= <primarypattern>
     \alt <suffixedpattern> \lit{when} <exp>
@@ -1182,6 +1186,35 @@ restarting the current iteration. The \verb|cycle| keyword is equivalent to
 
 <statexp> ::= <matchstat>
 \end{bnf}
+Vortex provides pattern matching similarly to e.g. the MLs, Rust or Haskell.
+Pattern matching works like a generalized \verb|switch| statement -- you have
+a list of input expressions in the \verb|match| expression and then you have
+some arms - arms start either with \verb|\|| or with \verb|case|, followed
+by a list of patterns (one pattern for each input, if you don't provide
+a pattern for some input then it always matches the input), then followed
+by either an expression after an arrow or a \verb|do| block.\\
+The same rules as with e.g. \verb|if| apply -- when \verb|match| is used in
+a statement form, only statement form expressions are allowed.\\
+The arms are evaluated from the top. The first arm where all patterns match
+is evaluated and then the evaluation stops. As you can see, it's similar to
+a \verb|switch|, but there is no fallthrough. Also unlike for example
+OCaml, non-exhaustive patterns are NOT detected.\\
+Pattern matching can be used for decomposition of data structures, besides
+regular mathching. For that purpose, lots of patterns are provided.
+\begin{description}
+\item[Variable pattern] \hfill \\
+This is the simplest kind of pattern. It's just a name (an identifier) and
+it is used to capture the input into a variable (local to the specific arm).
+You can then use the input using that variable. It never fails to match.
+\item[Wildcard pattern] \hfill \\
+This one is similar to variable pattern, except that no variable capture is
+made (it also never fails to match). It's an underscore in code.
+\item[Expression pattern] \hfill \\
+This pattern is represented either as a string literal, a number literal,
+\verb|true|, \verb|false|, \verb|nil|, an identifier prefixed by \verb|$|
+or an expression enclosed in \verb|$()|. It doesn't capture and it may
+fail to match (it tests the input for equality with the given expression).
+\end{description}
 
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
