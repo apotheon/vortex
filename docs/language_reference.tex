@@ -690,11 +690,62 @@ bitwise left shift respectively. The rest of the operators is functionally
 equivalent to those in C.
 \subsection{Tables and lists}
 \begin{bnf}
-<tableitem> ::= <exp>
+<tableitem> ::= [ ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    \lit{:} ] <exp>
+
+<listitem> ::= <exp>
 
 <tableexp> ::= \lit{\{} [ <tableitem> \{ \lit{,} <tableitem> \} ] \lit{\}}
-\end{bnf}
 
+<listexp> ::= \lit{[} <listitem> \{ \lit{,} <listitem> \} ] \lit{]}
+
+<exp> ::= <tableexp>
+    \alt <listexp>
+\end{bnf}
+Vortex provides two types of built-in data structures. They're tables and
+lists.\\
+Tables work in the same way as in Lua. They are something between an array,
+an associative array (unordered hash map) and an object. Array and hash
+elements can be both present in a single table. Tables are already described
+in their own section above.\\
+Syntactically, table literals are enclosed in curly braces. If you want a
+value that has a key, you use the colon syntax. For example:
+\begin{lstlisting}[language=vortex]
+let array = { 5, 10, 15 } // an array of 3 elements
+assert(array[1] == 5 and array[3] == 15)
+
+// contains keys "foo", "abcd", "bar"
+let assarray = { foo: "bar", $("ab" ~ "cd"): "baz", $bar: "xyz" }
+
+// combined
+let comb = { 5, 10, hello: "world", 15 } 
+\end{lstlisting}
+As you can see, keys can be arbitrary expressions. Keys can be any value
+except \verb|nil|.\\
+Arrays count from 1. They're basically associative arrays with keys that
+are numbers, however, Lua optimizes this by storing array elements in their
+own section. You can assign to a table as you need. Array length is retrieved
+using the \verb|#| operator. For example, this way you can append:
+\begin{lstlisting}[language=vortex]
+let array = { 5, 10, 15 }
+array[#array + 1] = 20
+\end{lstlisting}
+Tables can have metatables as mentioned in the section above.\\
+Lists are another data structure of Vortex. They use square brackets. Vortex
+lists are singly linked lists in concept similar to Lisp lists. You can
+construct a list multiple ways:
+\begin{lstlisting}[language=vortex]
+// using the list syntax
+let lst = [ 5, 10, 15, 20 ]
+// using the cons binary operator
+let tsl = 5 :: 10 :: 15 :: 20 :: nil
+\end{lstlisting}
+Both ways are equivalent. A list consists of the \enquote{head} element
+and the \enquote{tail} element. Here, the first head is 5, the tail is another
+list where the head is 10, the tail is another list, the head again is 25,
+followed by another list where the head is 20 and the tail is \verb|nil|.\\
+Sometimes lists are more efficient than just tables. It depends on the use.
+Lists are implemented using tables in the runtime.
 \subsection{Primary expressions}
 \begin{bnf}
 <primaryexp> ::= \lit{(} <exp> \lit{)}
