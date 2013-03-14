@@ -576,12 +576,17 @@ doing nothing, and that's better filtered out at compile time.
 \subsection{Main scope}
 \begin{bnf}
 <chunk> ::= \{ <statexp> [ \lit{;} ] \} [ (<retexp> | <resexp>) [ \lit{;} ] ]
+
+<mainchunk> ::= \{ (<statexp> | <macro>) [ \lit{;} ] \}
+    [ (<retexp> | <resexp>) [ \lit{;} ] ]
 \end{bnf}
 The parsing of Vortex begins in the main scope. The main scope is a chunk.
 A chunk is a sequence of side effect based expressions optionally separated
 with semicolons. It may be ended with either a \verb|return| or a \verb|result|
 expression. Having another expression after one of these results in syntax
-error.
+error.\\
+The main chunk can unlike any other chunk define macros, which are described
+in their own section later.
 \subsection{Blocks}
 \begin{bnf}
 <blockend> ::= \lit{end} | \lit{;;}
@@ -1371,6 +1376,12 @@ let Baz = clone [ a, b, c ]
 let inst = new Baz(5, 10, 15)
 print(inst.a, inst.b, inst.c)
 \end{lstlisting}
+
+\section{Macros}
+Vortex features an AST based macro system. That means it operates on AST level
+rather than on text level -- that way it can be context aware and much safer.
+The currently implemented macro system is not hygienic (it can capture and
+create outer identifiers) but it's planned.
 
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
