@@ -601,7 +601,7 @@ Lisp style formatted code. Blocks themselves are expressions. The \verb|result|
 expression can be used to specify their value.
 \subsection{Return and result expressions}
 \begin{bnf}
-<exporlist> ::= (<suffixedexp> | \lit{(} <explist> \lit{)})
+<exporlist> ::= (<exp> | \lit{(} <explist> \lit{)})
 
 <retexp> ::= \lit{return} <exporlist>
 
@@ -818,7 +818,7 @@ you can omit the parens. That means writing \verb|funcname "foo"| and
 \end{bnf}
 The \verb|let| expression provides means to declare and define variables.
 It consists of the keyword, a pattern or a pattern list enclosed in parens,
-an assignment operator and either a suffixed expression or an expression
+an assignment operator and either a single expression or an expression
 list enclosed in parens.\\
 You can also optionally provide modifier after the keyword. The modifier
 can currently be either \verb|rec| or \verb|glob|. The former is best used
@@ -844,7 +844,8 @@ fn rec bar() -> bar() // recursive
 \end{lstlisting}
 \subsection{Set expression}
 \begin{bnf}
-<setexp> ::= \lit{set} <exporlist> <assop> <exporlist>
+<setexp> ::= \lit{set} (<suffixedexp> | \lit{(} <explist> \lit{)})
+<assop> <exporlist>
 
 <statexp> ::= <setexp>
 \end{bnf}
@@ -1048,6 +1049,10 @@ implicitly terminates the block scope. Using \verb|end| explicitly ends the
 <statexp> ::= <loopexp>
     \alt <numforexp>
     \alt <genforexp>
+
+<exp> ::= \lit{break}
+    \alt \lit{cycle}
+    \alt \lit{redo}
 \end{bnf}
 Vortex has three types of loops. The simplest one is the \verb|loop| loop.
 By default, it loops like this:
@@ -1214,7 +1219,121 @@ This pattern is represented either as a string literal, a number literal,
 \verb|true|, \verb|false|, \verb|nil|, an identifier prefixed by \verb|$|
 or an expression enclosed in \verb|$()|. It doesn't capture and it may
 fail to match (it tests the input for equality with the given expression).
+\item[Table pattern] \hfill \\
+This pattern matches tables. It looks like a table literal. It can match
+both array and hash members, where array members are written in the same
+way as expressions in an array literal (except that they're patterns) and
+hash members are written in the same as well, where the key is an expression
+and the value is a pattern. When matching a table, you have to match all
+the array members, but you don't have to match all the hash members.
+It may fail to match.
+\item[Object pattern] \hfill \\
+With this pattern you can match objects. It consists of an identifier or
+a \verb|$| or a \verb|$()| expression followed by parens that contain a
+list of object member captures. A capture can be a simple identifier (then
+it will capture a member of that name) or a \verb|$| or a \verb|$()| expression
+followed by a colon and then by an identifier -- in that case it'll match
+a member with the key the expression evaluates to into a variable after the
+colon. You don't have to capture all object members. It may fail to match.
+\item[Cons pattern] \hfill \\
+This binary pattern decomposes an input into two parts, head and tail. It has
+a reversed meaning to the cons operator. The input has to be either a table
+or a list. On a table this is slow, on a list this is fast (in case of table
+it has to actuall slice the table). On invalid input it fails to match.\\
+Binary patterns have their precedence and associativity. The cons pattern has
+the highest precedence and is right associative. It looks the same as the cons
+operator.
+\item[And, or patterns] \hfill \\
+Binary patterns. The \verb|or| pattern has the lowest precedence, the
+\verb|and| pattern is above it, followed by the cons pattern. These are all
+binary patterns in Vortex. Both \verb|and| and \verb|or| patterns are left
+associative. They may fail to match.
+\item[When pattern] \hfill \\
+This pattern is a conditional pattern. It consists of a pattern followed by
+the keyword \verb|when| followed by a condition (which is an expression).
+It may obviously fail to match.
+\item[As pattern] \hfill \\
+This pattern essentially captures a pattern. It consists of a pattern followed
+by the \verb|as| keyword followed by another pattern. It's particularly useful
+if you have for example an expression pattern that doesn't capture the input
+and you still want to capture it besides checking its equality with the
+expression.
 \end{description}
+Some example code for pattern matching:
+\begin{lstlisting}[language=vortex]
+let x = 5
+// prints 5 - variable pattern
+print(match x -> | y -> y)
+
+// prints 10, expression and wildcard patterns
+print(match 4 ->
+    | 1 -> 2
+    | 2 -> 3
+    | 3 -> 4
+    | _ -> 10)
+
+// prints 5
+print(match 4 ->
+    | $(2 + 3) as x -> x
+    | $(2 * 2) as y -> y + 1)
+
+// prints nil, doesn't match
+print(match 10 ->
+    | x when x == 5 -> x)
+
+let tbl = { 5, 10, 15, foo: "bar", bar: "baz" }
+// prints "baz", first arm is incomplete
+print(match tbl ->
+    | { a, b, foo: c } -> a
+    | { a, b, c, bar: d } -> d)
+
+let list = [ 5, 10, 15, 20 ]
+// reversed list
+let x = match list ->
+    | a :: b :: c :: d -> [ d, c, b, a ] )
+\end{lstlisting}
+\subsection{Objects}
+\begin{bnf}
+<objectparents> ::= <suffixedexp>
+    \alt \lit{(} <explist> \lit{)}
+
+<objectimplctor> ::= \lit{[} [ <identlist> ] \lit{]}
+
+<objectitem> ::= <fndef>
+    \alt ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)}) \lit{:} <exp>
+
+<objectbody> ::= <objectimplctor> [ \lit{do} \{ <objectitem> \} \lit{end} ]
+    \alt \lit{do} \{ <objectitem> \} \lit{end}
+
+<objectexp> ::= \lit{clone} [ <objectparents> ] <objectbody>
+
+<newexp> ::= \lit{new} (<primaryexp> | \lit{(} <explist> \lit{)})
+
+<exp> ::= <objectexp>
+    \alt <newexp>
+\end{bnf}
+Vortex features a builtin object system. It's prototype based, delegative
+and supports multiple inheritance. It also has operator overloading. The object
+system is based around the \verb|clone| expression. It clones a parent object
+(or a set of parent objects in case of multiple inheritance). If you don't
+provide a parent object, it inherits from the internal Object table (which
+provides the basic stuff concerning objects). That means Object is the base
+for every user defined object.\\
+The \verb|clone| expression cannot be used as a statement. Objects are first
+class values and the \verb|clone| expression evaluates to them, so you use
+\verb|clone| in combination with \verb|let|.\\
+Objects feature constructors, but they don't have destructors. There are GC
+finalizers provided in the same manner as the \verb|__gc| metamethod with
+tables. There is an implicit constructor syntax -- you can provide a list
+of identifiers in square brackets that represent member names and Nth
+constructor argument will become Nth member in the brackets.\\
+There is also the \verb|new| expression, which creates an \enquote{instance}
+of the object -- that means, it clones the object and calls the parent
+constructor on it. That allows you to pretty much closely emulate classes
+without losing the flexible prototypal nature of Vortex's object system.\\
+Some examples:
+\begin{lstlisting}[language=vortex]
+\end{lstlisting}
 
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
@@ -1260,6 +1379,89 @@ the REPL prints its value. You can see an example in the very beginning
 of this section. Tables get special treatment -- they're serialized before
 printing. That should allow you to see the values clearly.
 
+\section{Appendix: Style guide}
+These are recommended conventions for Vortex code. You don't have to follow
+them, but it's strongly recommended for consistency.
+\subsection{Indentation}
+You use 4 spaces to indent each level. Tabs should be avoided. Try not to
+follow the Lua convention of 2 spaces.
+\subsection{Whitespace}
+Put a space before and after a binary operator. Do not space off unary
+operators. Do not put spaces around parens. You should put a space after each
+comma in the language. Do not put a space between function name and its
+argument list. You can use spaces to align things where needed.
+\subsection{Blocks}
+Keep the \verb|do| keyword on the same line with the preceeding code.
+\subsection{Naming style}
+The Vortex naming rules are simple and encourage readable code.
+\begin{itemize}
+\item Values, modules, functions and variables generally are \verb|snake_case|.
+\item Objects are \verb|This_Case|.
+\item Macro names are \verb|snake_case|. No need for uppercase because of
+obvious expansion syntax.
+\end{itemize}
+\begin{lstlisting}[language=vortex]
+let foo = 5 // Good
+let Bar = 10 // Bad!
+
+fn foo_bar(a, b) -> expr() // Good
+fn fooBar(a, b) -> expr() // Bad
+
+// Good
+let My_Object = clone do
+    fn my_method(self) -> self.x
+end
+// Bad
+let MyObject = clone do
+    fn myMethod(self) -> self.x
+end
+
+// Good
+macro foo(a, b) do ... end
+print(foo!(5, 10))
+// Bad
+macro FOO(a, b) do ... end
+print(FOO!(5, 10))
+\end{lstlisting}
+\subsection{Examples}
+\begin{lstlisting}[language=vortex]
+// Good!
+let x = a + b
+
+// Also good.
+if foo do
+    print("boo!")
+end
+
+// Alignment is good
+foo(bar(),
+    baz())
+
+// Spacing makes things readable.
+foo(bar(), baz(), (5 + 10 * (34 - 1) / 150))
+
+// Functions, the good way
+fn foo(a, b) -> hello(a, b)
+
+// But this is bad.
+let x = a+b
+
+// This is bad too.
+if foo
+do
+    print("boo")
+end
+
+// Bad alignment
+foo(bar(),
+        baz())
+
+// Excessive spacing.
+foo ( bar (), baz (), ( 5 + 10 * ( 34 - 1 ) / 150 ) )
+
+// A badly written function
+fn foo (a, b) -> hello ( a, b )
+\end{lstlisting}
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
 Lua, on which is built. Thus, you can find many similarities in Lua's and

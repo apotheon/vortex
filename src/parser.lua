@@ -2083,7 +2083,7 @@ local parse_let_with = function(ls, with, block)
         assert_tok(ls, ")")
         ls:get()
     else
-        exprs = { parse_suffixedexpr(ls) }
+        exprs = { parse_expr(ls) }
     end
 
     if with then
@@ -2127,7 +2127,7 @@ local parse_set = function(ls)
         assert_tok(ls, ")")
         ls:get()
     else
-        rhs = parse_suffixedexpr(ls)
+        rhs = parse_expr(ls)
     end
 
     return Binary_Expr(ls, op, lhs, rhs)
@@ -2551,7 +2551,7 @@ local parse_result = function(ls)
         ls:get()
         return Result_Expr(ls, unpack(exprs))
     end
-    return Result_Expr(ls, parse_suffixedexpr(ls))
+    return Result_Expr(ls, parse_expr(ls))
 end
 
 local parse_return = function(ls)
@@ -2564,7 +2564,7 @@ local parse_return = function(ls)
         ls:get()
         return Return_Expr(ls, unpack(exprs))
     end
-    return Return_Expr(ls, parse_suffixedexpr(ls))
+    return Return_Expr(ls, parse_expr(ls))
 end
 
 local parse_yield = function(ls)
@@ -2577,7 +2577,7 @@ local parse_yield = function(ls)
         ls:get()
         return Yield_Expr(ls, unpack(exprs))
     end
-    return Yield_Expr(ls, parse_suffixedexpr(ls))
+    return Yield_Expr(ls, parse_expr(ls))
 end
 
 local parse_object = function(ls)
@@ -2591,8 +2591,7 @@ local parse_object = function(ls)
         el = parse_exprlist(ls, true)
         assert_tok(ls, ")")
         ls:get()
-    elseif tok.name ~= ";;" and tok.name ~= "end" and tok.name ~= "->"
-    and tok.name ~= "[" then
+    elseif tok.name ~= "do" and tok.name ~= "[" then
         el = { parse_suffixedexpr(ls) }
     end
 
@@ -2602,31 +2601,30 @@ local parse_object = function(ls)
         ls:get()
 
         cargs = {}
-        repeat
+        if tok.name ~= "]" then repeat
             assert_tok(ls, "<ident>")
             local v = tok.value
             ls:get()
             cargs[#cargs + 1] = { v, --[[parse_when(ls)]] }
-         until tok.name ~= "," or ls:get() ~= "<ident>"
+         until tok.name ~= "," or ls:get() ~= "<ident>" end
 
         assert_tok(ls, "]")
         ls:get()
     end
 
-    if (cargs and tok.name ~= "->") or tok.name == ";;"
-    or tok.name == "end" then
-        if tok.name == ";;" or tok.name == "end" then
+    if (cargs and tok.name ~= "do") or tok.name == "end" then
+        if tok.name == "end" then
             ls:get()
         end
         return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {})
     end
 
-    assert_tok(ls, "->")
+    assert_tok(ls, "do")
     ls:get()
 
     local tbl = {}
-    repeat
+    if tok.name ~= "end" then repeat
         if tok.name == "fn" then
             tbl[#tbl + 1] = { parse_function(ls, true) }
         elseif tok.name == "<ident>" then
@@ -2645,9 +2643,9 @@ local parse_object = function(ls)
         if tok.name == ";" then
             ls:get()
         end
-    until tok.name == ";;" or tok.name == "end"
+    until tok.name == "end" end
 
-    assert_tok(ls, ";;", "end")
+    assert_tok(ls, "end")
     ls:get()
     return Object_Expr(ls, el and el or {
             Symbol_Expr(nil, lazy_rt_fun("obj_def")) }, cargs or {},
