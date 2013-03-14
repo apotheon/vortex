@@ -1378,10 +1378,69 @@ print(inst.a, inst.b, inst.c)
 \end{lstlisting}
 
 \section{Macros}
+\begin{bnf}
+<macro> ::= \lit{macro} <ident> [ <identlist> ] [ \lit{...} ] <expscope>
+
+<quoteexp> ::= \lit{quote} (<suffixedexp> | <block>)
+
+<unquoteexp> ::= \lit{unquote} (<suffixedexp> | <block>)
+
+<exp> ::= <quoteexp>
+    \alt <unquoteexp>
+\end{bnf}
 Vortex features an AST based macro system. That means it operates on AST level
 rather than on text level -- that way it can be context aware and much safer.
 The currently implemented macro system is not hygienic (it can capture and
-create outer identifiers) but it's planned.
+create outer identifiers) but it's planned.\\
+A macro starts with the \verb|macro| keyword followed by the macro name
+and an argument list. Then either an arrow followed by an expression or
+a block follows. This is very similar to regular functions, but there are
+no default argument values and no named varargs.\\
+To use a macro, you need to expand it. You do that using the
+\verb|macroname!(macroargs)| syntax (it's a primary expression). It means
+that the macro will expand at that point, substituting the expansion expression
+with some actual code.\\
+As mentioned previously, a macro works on AST level -- the macro has zero or
+more inputs (that are serialized AST nodes) and it's supposed to return an
+AST node, which is then injected into the final AST at the expansion point.\\
+Macro arguments are implicitly serialized into AST nodes. The expression you
+return from the macro (using regular \verb|return| or using the arrow notation)
+is not, so you need to serialize it. For that purpose, there is the
+\verb|quote| expression. It takes an arbitrary expression and evaluates to
+the AST of it, converting any subexpressions into AST as well. For example
+\begin{lstlisting}[language=vortex]
+let x = quote (fn a, b do
+    print("hello world")
+end)
+\end{lstlisting}
+results in a function AST node with all the contents serialized as well as
+the function itself.\\
+There is one other expression, \verb|unquote|. It basically tells the
+\verb|quote| expression to \enquote{stop} at that point. For example:
+\begin{lstlisting}[language=vortex]
+let a = quote (x + y)
+let b = quote (y * z)
+
+// this is a binary expression with
+// operator / containing two symbols
+let c = quote (a / b)
+// this is a binary expression with operator
+// / containing two binary expressions, a and b
+let d = quote (unquote a / unquote b)
+\end{lstlisting}
+With these facilities available, we can define a macro:
+\begin{lstlisting}[language=vortex]
+macro my_if(cond, texp, fexp) -> quote
+    (match not unquote cond ->
+        | true  -> unquote fexp
+        | false -> unquote texp)
+
+let x = 5
+print(my_if!(x == 5, "hello", "world"))
+\end{lstlisting}
+Here it prints \enquote{hello}, because the condition is true. The unquotes
+are needed so that we put the inputs themselves in the result, not just
+symbols.
 
 \section{The REPL}
 Vortex provides an interactive command line and a standalone script runner
