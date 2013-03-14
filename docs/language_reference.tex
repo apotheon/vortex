@@ -1292,6 +1292,10 @@ let list = [ 5, 10, 15, 20 ]
 let x = match list ->
     | a :: b :: c :: d -> [ d, c, b, a ] )
 \end{lstlisting}
+As previously mentioned, the \verb|let| expression also makes use of patterns.
+The pattern use is limited though -- only patterns that never fail to match
+can be used. The table pattern is modified appropriately to allow use with
+\verb|let| -- you can match partial contents of an array with it.
 \subsection{Objects}
 \begin{bnf}
 <objectparents> ::= <suffixedexp>
