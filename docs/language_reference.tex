@@ -1376,6 +1376,14 @@ let Baz = clone [ a, b, c ]
 let inst = new Baz(5, 10, 15)
 print(inst.a, inst.b, inst.c)
 \end{lstlisting}
+\subsection{Other expressions}
+\begin{bnf}
+<exp> ::= \lit{__FILE__}
+    \alt \lit{__LINE__}
+\end{bnf}
+There are two other expressions. They're very simple. The \verb|__FILE__|
+expression expands to the current filename at compile time. The \verb|__LINE__|
+expression expands to the line the expression is on, also at compile time.
 
 \section{Macros}
 \begin{bnf}
