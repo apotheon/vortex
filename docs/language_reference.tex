@@ -1376,6 +1376,56 @@ let Baz = clone [ a, b, c ]
 let inst = new Baz(5, 10, 15)
 print(inst.a, inst.b, inst.c)
 \end{lstlisting}
+\subsection{Coroutines}
+\begin{bnf}
+<corobody> ::= \lit{->} <exp>
+    \alt <arglist> <expscope>
+
+<coroexp> ::= (\lit{coro} | \lit{cfn}) <corobody>
+
+<yieldexp> ::= \lit{yield} <exporlist>
+
+<exp> ::= <coroexp>
+
+<statexp> ::= <yieldexp>
+\end{bnf}
+I already described coroutines above, here I'll describe them when it comes to
+their syntax. Vortex provides two variants of coroutines, the \verb|coro|
+variant and the \verb|cfn| variant. The former creates a true coroutine --
+a thread object that you can resume and so on. The latter creates a simplified
+function form -- it resumes when you call it, and there is no way to query
+whether it's already dead (except that it returns nil when it is and you
+call it).\\
+Each of these has two forms again. The arrow form (the keyword followed by
+an arrow and an expression) takes an arbitrary expression and makes it into
+a coroutine. The function form consists of the keyword, a function argument
+list (identical with a regular function) and a function body (an arrow followed
+by an expression or a block with or without arrow). That one is just a
+shorthand, for example \verb|cfn a, b -> body| is the same as
+\verb|cfn -> fn a, b -> body|.\\
+You can yield from a coroutine using the \verb|yield| expression, which looks
+similar to the \verb|return| or \verb|result| expression. You can resume a
+thread object using the \verb|resume| function in the core library. There
+is also the Lua library for coroutine manipulation which works just fine.
+\subsection{Sequences}
+\begin{bnf}
+<seqexp> ::= \lit{seq} <expscope>
+\end{bnf}
+Vortex features sequences. They evaluate to a tuple of expressions (not a
+first class value -- it's similar to a function that returns multiple values).
+They're basically coroutines. They evaluate to the values you yield from them.
+That you can use for e.g. list comprehensions. Example:
+\begin{lstlisting}[language=vortex]
+// this table is an array of numbers from 1 to 10
+let x = { seq -> for i = 1 .. 10 -> yield i }
+
+// with blocks
+let x = { seq do
+    for i = 1 .. 5 -> yield i
+    yield 6
+    return 7 // also works, terminates the sequence
+end }
+\end{lstlisting}
 \subsection{Other expressions}
 \begin{bnf}
 <exp> ::= \lit{__FILE__}
