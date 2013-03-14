@@ -1319,6 +1319,8 @@ system is based around the \verb|clone| expression. It clones a parent object
 provide a parent object, it inherits from the internal Object table (which
 provides the basic stuff concerning objects). That means Object is the base
 for every user defined object.\\
+When inheriting from multiple parents, non-existent members are looked up
+from parents from left to right depth-first.\\
 The \verb|clone| expression cannot be used as a statement. Objects are first
 class values and the \verb|clone| expression evaluates to them, so you use
 \verb|clone| in combination with \verb|let|.\\
@@ -1327,12 +1329,43 @@ finalizers provided in the same manner as the \verb|__gc| metamethod with
 tables. There is an implicit constructor syntax -- you can provide a list
 of identifiers in square brackets that represent member names and Nth
 constructor argument will become Nth member in the brackets.\\
+Constructors are never called when cloning an object.\\
 There is also the \verb|new| expression, which creates an \enquote{instance}
 of the object -- that means, it clones the object and calls the parent
 constructor on it. That allows you to pretty much closely emulate classes
 without losing the flexible prototypal nature of Vortex's object system.\\
+Vortex provides the \verb|super| function in the standard library. It returns
+a proxy object on which one can call parent methods. You can provide either
+one or two arguments. If you have an object \verb|x|, which is an instance of
+\verb|Bar|, which is a clone of \verb|Foo|, calling \verb|super(x):abc()|
+calls a method of \verb|Foo| (instead of \verb|Bar|, which is a parent of
+\verb|x|) and it clals it on \verb|x|. If you provide two arguments, the
+first one is an object -- a clone, the other one is the object on which
+we want to call. Calling \verb|super(Bar, x)| and \verb|super(x)| is equivalent
+in this case.
 Some examples:
 \begin{lstlisting}[language=vortex]
+let Foo = clone do
+    fn __init(self, a, b) do
+        print("I'm a constructor!")
+        set (self.a, self.b) = (a, b)
+    end
+
+    fn foo() do
+        print("I'm a method without self, all alone")
+    end
+
+    fn bar(self) -> print("I'm a method!", self.a, self.b)
+end
+
+let Bar = clone Foo do
+    fn xyz(self) -> Foo.bar(self)
+end
+
+let Baz = clone [ a, b, c ]
+
+let inst = new Baz(5, 10, 15)
+print(inst.a, inst.b, inst.c)
 \end{lstlisting}
 
 \section{The REPL}
