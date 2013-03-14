@@ -68,6 +68,7 @@
 }
 
 \lstdefinelanguage{vortex}{
+  basicstyle=\footnotesize,
   keywordstyle={\color{keyword2}\bfseries},
   keywordstyle=[2]{\color{keyword1}\bfseries},
   keywordstyle=[3]{\color{keyword2}\bfseries},
@@ -698,14 +699,9 @@ equivalent to those in C.
 <tableitem> ::= [ ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
     \lit{:} ] <exp>
 
-<listitem> ::= <exp>
-
 <tableexp> ::= \lit{\{} [ <tableitem> \{ \lit{,} <tableitem> \} ] \lit{\}}
 
-<listexp> ::= \lit{[} <listitem> \{ \lit{,} <listitem> \} ] \lit{]}
-
-<exp> ::= <tableexp>
-    \alt <listexp>
+<listexp> ::= \lit{[} <exp> \{ \lit{,} <exp> \} ] \lit{]}
 \end{bnf}
 Vortex provides two types of built-in data structures. They're tables and
 lists.\\
@@ -908,10 +904,12 @@ the scope will always evaluate, even when \verb|y| is \verb|nil|.
 
 <arglist> ::= [ <identlist> ] [ <defarglist> ] [ [ <ident> ] \lit{...} ]
 
-<fnliteral> ::= \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)}) <expscope>
+<fnscope> ::= \lit{->} (<exp> | <matchbody>) | <block>
+
+<fnliteral> ::= \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)}) <fnscope>
 
 <fndef> ::= \lit{fn} ([ <lettype> ] <ident> | <ident> [ \lit{.} <ident> ])
-    \lit{(} <arglist> \lit{)} <expscope>
+    \lit{(} <arglist> \lit{)} <fnscope>
 
 <statexp> ::= <fndef>
 
@@ -1008,6 +1006,18 @@ fn foo(a, ...) do
     let b = { ... }
     print(a, b[1], b[2])
 end
+\end{lstlisting}
+Vortex functions have a shorthand pattern matching variant. Writing
+\begin{lstlisting}[language=vortex]
+fn arglist ->
+    | patternlist -> exp
+    | ...
+\end{lstlisting}
+is equivalent to
+\begin{lstlisting}[language=vortex]
+fn arglist -> match arglist ->
+    | patternlist -> exp
+    | ...
 \end{lstlisting}
 \subsection{If expression}
 \begin{bnf}
@@ -1410,6 +1420,8 @@ is also the Lua library for coroutine manipulation which works just fine.
 \subsection{Sequences}
 \begin{bnf}
 <seqexp> ::= \lit{seq} <expscope>
+
+<exp> ::= <seqexp>
 \end{bnf}
 Vortex features sequences. They evaluate to a tuple of expressions (not a
 first class value -- it's similar to a function that returns multiple values).
@@ -1627,6 +1639,348 @@ foo ( bar (), baz (), ( 5 + 10 * ( 34 - 1 ) / 150 ) )
 // A badly written function
 fn foo (a, b) -> hello ( a, b )
 \end{lstlisting}
+
+\section{Appendix: The complete syntax of Vortex}
+\begin{bnf}
+
+% LEXER
+
+<alpha> ::= \lit{a-zA-Z}
+
+<digit> ::= \lit{0-9}
+
+<hexdigit> ::= \lit{0-9a-fA-F}
+
+<whitespace> ::= \lit{ }
+    \alt \lit{\\n}
+    \alt \lit{\\r}
+    \alt \lit{\\t}
+    \alt \lit{\\f}
+    \alt \lit{\\v}
+
+<comment> ::= \lit{//} /.*\$/
+    \alt \lit{/*} \{ /./ | <comment> \} \lit{*/}
+
+<ident> ::= (\lit{_} | <alpha>) \{ \lit{_} | <alpha> | <digit> \}
+
+<identlist> ::= <ident> \{ \lit{,} <ident> \}
+
+<opkeyword> ::= \lit{band}
+    \alt \lit{bor}
+    \alt \lit{bxor}
+    \alt \lit{asr}
+    \alt \lit{bsr}
+    \alt \lit{bsl}
+    \alt \lit{and}
+    \alt \lit{or}
+
+<opkeywordass> ::= \lit{band=}
+    \alt \lit{bor=}
+    \alt \lit{bxor=}
+    \alt \lit{asr=}
+    \alt \lit{bsr=}
+    \alt \lit{bsl=}
+
+<keyword> ::= \lit{as}
+    \alt \lit{break}
+    \alt \lit{case}
+    \alt \lit{cfn}
+    \alt \lit{clone}
+    \alt \lit{coro}
+    \alt \lit{cycle}
+    \alt \lit{do}
+    \alt \lit{else}
+    \alt \lit{end}
+    \alt \lit{enum}
+    \alt \lit{false}
+    \alt \lit{fn}
+    \alt \lit{for}
+    \alt \lit{glob}
+    \alt \lit{goto}
+    \alt \lit{if}
+    \alt \lit{in}
+    \alt \lit{let}
+    \alt \lit{loop}
+    \alt \lit{macro}
+    \alt \lit{match}
+    \alt \lit{module}
+    \alt \lit{new}
+    \alt \lit{nil}
+    \alt \lit{quote}
+    \alt \lit{rec}
+    \alt \lit{redo}
+    \alt \lit{result}
+    \alt \lit{return}
+    \alt \lit{seq}
+    \alt \lit{set}
+    \alt \lit{true}
+    \alt \lit{unquote}
+    \alt \lit{when}
+    \alt \lit{while}
+    \alt \lit{with}
+    \alt \lit{yield}
+    \alt \lit{__FILE__}
+    \alt \lit{__LINE__}
+    \alt <opkeyword>
+    \alt <opkeywordass>
+    \alt <unopkeyword>
+
+<unopkeyword> ::= \lit{not}
+    \alt \lit{bnot}
+
+<binop> ::= \lit{=}
+    \alt \lit{==}
+    \alt \lit{\textgreater}
+    \alt \lit{\textgreater=}
+    \alt \lit{\textless}
+    \alt \lit{\textless=}
+    \alt \lit{!=}
+    \alt \lit{\%}
+    \alt \lit{~}
+    \alt \lit{+}
+    \alt \lit{++}
+    \alt \lit{*}
+    \alt \lit{**}
+    \alt \lit{-}
+    \alt \lit{/}
+    \alt \lit{::}
+    \alt <opkeyword>
+
+<assop> ::= \lit{~=}
+    \alt \lit{+=}
+    \alt \lit{++=}
+    \alt \lit{*=}
+    \alt \lit{**=}
+    \alt \lit{-=}
+    \alt \lit{/=}
+    \alt \lit{::=}
+    \alt \lit{\%=}
+    \alt <opkeywordass>
+
+<unop> ::= \lit{-}
+    \alt \lit{\#}
+    \alt <unopkeyword>
+
+<othertok> ::= \lit{(}
+    \alt \lit{)}
+    \alt \lit{->}
+    \alt \lit{.}
+    \alt \lit{..}
+    \alt \lit{...}
+    \alt \lit{;}
+    \alt \lit{;;}
+    \alt \lit{\$}
+    \alt \lit{\$(}
+
+% number literals
+
+<hexnum> ::= (\lit{0x} | \lit{0X}) \{ <hexdigit> \} [ \lit{.} ]
+    \{ <hexdigit> \} [ (\lit{p} | \lit{P}) [ \lit{+} | \lit{-} ] <digit> ]
+
+<decnum> ::= \{ <digit> \} [ \lit{.} ] \{ <digit> \} [ (\lit{e} | \lit{E})
+    [ \lit{+} | \lit{-} ] <digit> ]
+
+<numliteral> ::= <hexnum>
+    \alt <decnum>
+
+% string literals
+
+<strliteral> ::= <strprefix> (<strlong> | <strshort>)
+
+<strprefix> ::= /[eErR]*/
+
+<strshort> ::= \lit{\textquotedbl} <strshortelem> \lit{\textquotedbl}
+    \alt \lit{\textquotesingle} <strshortelem> \lit{\textquotesingle}
+
+<strlong> ::= \lit{\textquotedbl\textquotedbl\textquotedbl} <strlongelem>
+        \lit{\textquotedbl\textquotedbl\textquotedbl}
+    \alt \lit{\textquotesingle\textquotesingle\textquotesingle} <strlongelem>
+        \lit{\textquotesingle\textquotesingle\textquotesingle}
+
+<strshortelem> ::= ? short string contents ?
+    \alt <stresc>
+
+<strlongelem> ::= ? long string contents ?
+    \alt <stresc>
+
+<stresc> ::= \lit{\\a}
+    \alt \lit{\\b}
+    \alt \lit{\\f}
+    \alt \lit{\\n}
+    \alt \lit{\\r}
+    \alt \lit{\\t}
+    \alt \lit{\\v}
+    \alt \lit{\\z}
+    \alt \lit{\\\textquotedbl}
+    \alt \lit{\\\textquotesingle}
+    \alt \lit{\\}
+
+% PARSER
+
+<chunk> ::= \{ <statexp> [ \lit{;} ] \} [ (<retexp> | <resexp>) [ \lit{;} ] ]
+
+<mainchunk> ::= \{ (<statexp> | <macro>) [ \lit{;} ] \}
+    [ (<retexp> | <resexp>) [ \lit{;} ] ]
+
+<macro> ::= \lit{macro} <ident> [ <identlist> ] [ \lit{...} ] <expscope>
+
+<blockend> ::= \lit{end} | \lit{;;}
+
+<block> ::= \lit{do} <chunk> <blockend>
+
+<expscope> ::= \lit{->} <exp> | <block>
+
+<statscope> ::= \lit{->} <statexp> | <block>
+
+<fnscope> ::= \lit{->} (<exp> | <matchbody>) | <block>
+
+<ifblock> ::= \lit{do} <chunk>
+
+<elseopt> ::= \lit{else} [ \lit{->} ] exp
+
+<elsestatopt> ::= \lit{else} [ \lit{->} ] statexp
+
+<statexp> ::= <block>
+    \alt (<ident> | <indexp>) <assop> <exp>
+    \alt <suffixedexp> <tcallsuffix>
+    \alt \lit{if} <exp> (\lit{->} <statexp> [ <elsestatopt> ] |
+        <ifblock> (\lit{end} | <elsestatopt>))
+    \alt \lit{let} [ <lettype> ] (<pattern> | \lit{(} <patternlist>
+        \lit{)}) \lit{=} <exporlist>
+    \alt \lit{set} (<suffixedexp> | \lit{(} <explist> \lit{)})
+        <assop> <exporlist>
+    \alt \lit{with} (<pattern> | \lit{(} <patternlist> \lit{)})
+        \lit{=} <exporlist> <statscope>
+    \alt \lit{fn} ([ <lettype> ] <ident> | <ident> [ \lit{.} <ident> ])
+        \lit{(} <arglist> \lit{)} <fnscope>
+    \alt \lit{match} <explist> \lit{->} <matchbodystat>
+    \alt <retexp>
+    \alt <resexp>
+
+<retexp> ::= \lit{return} <exporlist>
+
+<resexp> ::= \lit{result} <exporlist>
+
+<exp> ::= <statexp>
+    \alt <exp> <binop> <exp>
+    \alt <unop> <exp>
+    \alt <primaryexp>
+    \alt <suffixedexp>
+    \alt \lit{match} <explist> \lit{->} <matchbody>
+    \alt \lit{clone} [ <objectparents> ] <objectbody>
+    \alt (\lit{coro} | \lit{cfn}) (\lit{->} <exp> | <arglist> <expscope>)
+    \alt \lit{if} <exp> (\lit{->} <exp> [ <elseopt> ] |
+        <ifblock> (\lit{end} | <elseopt>))
+    \alt \lit{with} (<pattern> | \lit{(} <patternlist> \lit{)})
+        \lit{=} <exporlist> <expscope>
+    \alt \lit{loop} [ <loopcond> ] <statscope> [ <loopcond> ]
+    \alt \lit{for} <ident> \lit{=} <exp> \lit{..} <exp>
+        [ \lit{,} <exp> ] <statscope>
+    \alt \lit{for} <identlist> \lit{in} <explist> <statscope>
+    \alt \lit{fn} (<arglist> | \lit{(} <arglist> \lit{)}) <fnscope>
+    \alt \lit{yield} <exporlist>
+    \alt \lit{seq} <expscope>
+    \alt \lit{new} (<primaryexp> | \lit{(} <explist> \lit{)})
+    \alt \lit{quote} (<suffixedexp> | <block>)
+    \alt \lit{unquote} (<suffixedexp> | <block>)
+    \alt \lit{break}
+    \alt \lit{cycle}
+    \alt \lit{redo}
+    \alt \lit{__FILE__}
+    \alt \lit{__LINE__}
+
+<primaryexp> ::= \lit{(} <exp> \lit{)}
+    \alt <tableexp>
+    \alt \lit{[} <exp> \{ \lit{,} <exp> \} ] \lit{]}
+    \alt \lit{\$(} <exp> \lit{)}
+    \alt \lit{\$} <ident>
+    \alt <ident> [ \lit{!} \lit{(} <explist> \lit{)} ]
+    \alt <numliteral>
+    \alt <strliteral>
+    \alt \lit{nil}
+    \alt \lit{true}
+    \alt \lit{false}
+
+<suffixedexp> ::= <primaryexp> <expsuffix>
+
+<tableexp> ::= \lit{\{} [ <tableitem> \{ \lit{,} <tableitem> \} ] \lit{\}}
+
+<explist> ::= [ <exp> \{ \lit{,} <exp> \} ]
+
+<exporlist> ::= (<exp> | \lit{(} <explist> \lit{)})
+
+<defarglist> ::= <ident> \lit{=} <exp> \{ \lit{,} <ident> \lit{=} <exp> \}
+
+<arglist> ::= [ <identlist> ] [ <defarglist> ] [ [ <ident> ] \lit{...} ]
+
+<lettype> ::= \lit{rec}
+    \alt \lit{glob}
+
+<loopcond> ::= \lit{while} <exp>
+
+<tableitem> ::= [ ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    \lit{:} ] <exp>
+
+<fcallsuffix> ::= \lit{(} <explist> \lit{)}
+    \alt <tableexp>
+    \alt <strliteral>
+
+<mcallsuffix> ::= \lit{:} <ident> <fcallsuffix>
+
+<tcallsuffix> ::= <fcallsuffix>
+    \alt <mcallsuffix>
+
+<indexsuffix> ::= \lit{.} <ident>
+    \alt \lit{[} <exp> \lit{]}
+
+<expsuffix> ::= [ <expsuffix> ] (<indexsuffix> | <tcallsuffix>)
+
+<objectparents> ::= <suffixedexp>
+    \alt \lit{(} <explist> \lit{)}
+
+<objectimplctor> ::= \lit{[} [ <identlist> ] \lit{]}
+
+<objectitem> ::= <fndef>
+    \alt ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)}) \lit{:} <exp>
+
+<objectbody> ::= <objectimplctor> [ \lit{do} \{ <objectitem> \} \lit{end} ]
+    \alt \lit{do} \{ <objectitem> \} \lit{end}
+
+<objectpatitem> ::= ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    [ \lit{:} ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)}) ]
+
+<objectpatbody> ::= <objectpatitem> \{ \lit{,} <objectpatitem> \}
+
+<tablepatitem> ::= [ ([ \lit{\$} ] <ident> | \lit{\$(} <exp> \lit{)})
+    \lit{:} ] <pattern>
+
+<primarypattern> ::= \lit{(} <pattern> \lit{)}
+    \alt <strliteral>
+    \alt <numliteral>
+    \alt \lit{true}
+    \alt \lit{false}
+    \alt \lit{nil}
+    \alt \lit{_}
+    \alt [ \lit{\$} ] <ident> [ \lit{(} [ <objectpatbody> ] \lit{)} ]
+    \alt \lit{\$(} <exp> \lit{)} [ \lit{(} [ <objectpatbody> ] \lit{)} ]
+    \alt \lit{\{} <tablepatitem> \{ \lit{,} <tablepatitem> \} \lit{\}}
+
+<suffixedpattern> ::= <primarypattern>
+    \alt <suffixedpattern> \lit{when} <exp>
+    \alt <suffixedpattern> \lit{as} <exp>
+
+<pattern> ::= <suffixedpattern>
+    [ (\lit{and} | \lit{or} | \lit{::}) <suffixedpattern> ]
+
+<matcharm> ::= (\lit{|} | \lit{case}) <patternlist> <expscope>
+
+<matcharmstat> ::= (\lit{|} | \lit{case}) <patternlist> <statscope>
+
+<matchbody> ::= <matcharm> \{ <matcharm> \}
+
+<matchbodystat> ::= <matcharmstat> \{ <matcharmstat> \}
+\end{bnf}
+
 \section{Appendix: Influences}
 Vortex is a language with many influences. It follows the same principles as
 Lua, on which is built. Thus, you can find many similarities in Lua's and
