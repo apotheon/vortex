@@ -224,10 +224,61 @@ define fallbacks for operations on the value. What does this mean? It means
 you can change the semantics on tables and other values and extend the
 language this way. For example, a metamethod \verb|__add| defines
 what happens when you add the value together with some other value.\\
-Metamethods have intuitive naming scheme based on the name of the event
+Metamethods have an intuitive naming scheme based on the name of the event
 they handle. They're prefixed with two underscores. You can get a metatable
 of a value using the \verb|get_mt| function. You can set a metatable using
-\verb|set_mt|.
+\verb|set_mt|.\\
+The metamethod handling is identical to that of Lua. Please refer to its
+reference manual for more information.
+\begin{description}
+\item[__add]: the \verb|+| operator. \hfill \\
+This metamethods is called when you try to add something to the value or
+if something that has no \verb|__add| tries to add he value to itself.
+It takes two arguments representing the left side of the operation and
+the right side. It returns the addition result.
+\item[__sub]: the \verb|-| operator.
+\item[__mul]: the \verb|*| operator.
+\item[__div]: the \verb|/| operator.
+\item[__mod]: the \verb|%| operator.
+\item[__pow]: the \verb|^| operator.
+\item[__unm]: unary minus, takes just one argument.
+\item[__concat]: the \verb|~| operator.
+\item[__len]: the \verb|#| unary operator. \hfill \\
+You can get the value's length using the \verb|raw_len| function without
+invoking this metamethod.
+\item[__eq]: the \verb|==| operator. \hfill \\
+You can compare two values using the \verb|raw_eq| function without invoking
+this metamethod.
+\item[__lt]: the \verb|<| operator. \hfill \\
+The \verb|>| operator behavior is defined by reversing the operand order.
+\item[__le]: the \verb|<=| operator. \hfill \\
+The \verb|>=| operator behavior is defined by reversing the operand order.
+When the \verb|<=| metamethod is absent, \verb|<| is used, assuming
+\verb|a <= b| is equivalent to \verb|not (b < a)|.
+\item[__index]: indexing. \hfill \\
+This metamethod is called on \verb|val[key]|. It's only called when
+\verb|key| is not present in the table (it's a fallback operation). The
+first argument is the value you're indexing on and the second argument
+is the key. It's supposed to return the value you want to get.\\
+If you want to retrieve a member without ever invoking this metamethod (e.g.
+for use inside this metamethod so that it doesn't call recursively), use
+\verb|raw_get|.
+\item[__newindex]: index assignment. \hfill \\
+This metamethod is called on \verb|val[key] = value|. It's only called
+when \verb|key| is not present in the table. The firstargument is the value
+itself, the second argument is the key, the third argument is the value.
+Returns nothing, or ignores any return values.\\
+If you want to set a member without invoking this metamethod, use
+\verb|raw_set|.
+\item[__call]: value call. \hfill \\
+Called on \verb|myval(arglist)|. The first argument is the value that's being
+called, followed by the list of arguments to the call.
+\item[__gc]: called on garbage collection of the value. \hfill \\
+Useful for tables and userdata. As Vortex uses a garbage collector, tables
+are not freed immediately -- instead they're marked for collection, and then
+during collection cycle freed. The object finalizers are called in the reverse
+order that they were marked.
+\end{description}
 \subsection{Coroutines}
 Lua offers coroutines and so does Vortex. Coroutines are used to do
 collaborative multithreading. A coroutine is a thread -- it has its own
