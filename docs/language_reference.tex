@@ -270,7 +270,7 @@ itself, the second argument is the key, the third argument is the value.
 Returns nothing, or ignores any return values.\\
 If you want to set a member without invoking this metamethod, use
 \verb|raw_set|.
-\item[__call]: value call. \hfill \\
+\item[__call]: a value call. \hfill \\
 Called on \verb|myval(arglist)|. The first argument is the value that's being
 called, followed by the list of arguments to the call.
 \item[__gc]: called on garbage collection of the value. \hfill \\
@@ -1489,6 +1489,31 @@ let x = { seq do
     return 7 // also works, terminates the sequence
 end }
 \end{lstlisting}
+\subsection{Enumerations}
+\begin{bnf}
+<enumitem> ::= <ident> [ \lit{:} <exp> ]
+
+<enumexp> ::= \lit{enum} \lit{(} <enumitem> \{ \lit{,} <enumitem> \} \lit{)}
+
+<exp> ::= <enumexp>
+\end{bnf}
+Vortex also features enumerations. They start with the \verb|enum| keyword
+followed by a list of identifiers in parens. An enumeration represents a
+sequence of numbers (or custom expressions). It evaluates to an associative
+array where the identifiers specified here are the keys.\\
+Each of the keys has an associated value, by default numerical, starting from
+0, incrementing by 1 with each following member. Note that the order when
+iterating an enum is undefined.
+\begin{lstlisting}[language=vortex]
+let Foo = enum (A, B, C)
+assert(Foo.A == 0 and Foo.B = 1 and Foo.C = 2)
+
+let Bar = enum (FOO: 5, BAR, BAZ: 10, BAH)
+assert(Bar.FOO == 5  and Bar.BAR == 6
+   and Bar.BAZ == 10 and Bar.BAH == 11)
+\end{lstlisting}
+The expression you optionally provide when defining an enum member should
+be incrementable.
 \subsection{Other expressions}
 \begin{bnf}
 <exp> ::= \lit{__FILE__}
@@ -1934,6 +1959,8 @@ fn foo (a, b) -> hello ( a, b )
     \alt \lit{new} (<primaryexp> | \lit{(} <explist> \lit{)})
     \alt \lit{quote} (<suffixedexp> | <block>)
     \alt \lit{unquote} (<suffixedexp> | <block>)
+    \alt \lit{enum} \lit{(} <ident> [ \lit{:} <exp> ]
+        \{ \lit{,} <ident> [ \lit{:} <exp> ] \} \lit{)}
     \alt \lit{break}
     \alt \lit{cycle}
     \alt \lit{redo}

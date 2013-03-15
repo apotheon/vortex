@@ -8,7 +8,7 @@ if not vxrt then
     _G["rt_parser"] = M
     vxrt = require("rt")
     _G["rt_parser"] = nil
-end
+end                                     
 
 local Binary_Ops = {
     -- assignment ops are left out, they're right associative and have the
@@ -2180,8 +2180,6 @@ local parse_enum = function(ls)
     ls:get()
 
     local tok = ls.token
-    assert_tok(ls, "->")
-    ls:get()
     assert_tok(ls, "(")
     ls:get()
 
@@ -2190,7 +2188,7 @@ local parse_enum = function(ls)
         assert_tok(ls, "<ident>")
         local name = tok.value
         ls:get()
-        if tok.name == "=" then
+        if tok.name == ":" then
             ls:get()
             t[#t + 1] = { name, parse_expr(ls) }
         else
@@ -2630,13 +2628,13 @@ local parse_object = function(ls)
         elseif tok.name == "<ident>" then
             local kexpr = Value_Expr(nil, tok.value)
             ls:get()
-            assert_tok(ls, "=")
+            assert_tok(ls, ":")
             ls:get()
             tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         else
             assert_tok(ls, "$", "$(")
             local kexpr = parse_expr(ls)
-            assert_tok(ls, "=")
+            assert_tok(ls, ":")
             ls:get()
             tbl[#tbl + 1] = { kexpr, parse_expr(ls) }
         end
