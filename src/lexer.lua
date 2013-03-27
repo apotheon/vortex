@@ -81,7 +81,7 @@ local kwops = {
 }
 
 local lex_error = function(ls, msg, value)
-    msg = ("%s:%d: %s"):format(ls.source, ls.line_number, msg)
+    msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, ls.column, msg)
     if value then
         msg = msg .. " near '" .. value .. "'"
     end
@@ -92,9 +92,28 @@ local syntax_error = function(ls, msg)
     lex_error(ls, msg, ls.token.value or ls.token.name)
 end
 
+local get_nbytes = function(ch)
+    local i = ch:byte()
+    return (i >= 240) and 4 or ((i >= 224) and 3 or ((i >= 192) and 2 or 1))
+end
+
+local lastbytes = 0
+
 local next_char = function(ls)
     local c = ls.reader()
     ls.current = c
+
+    local nb = lastbytes
+    if nb == 0 then nb = get_nbytes(c) end
+
+    if nb == 1 then
+        nb = 0
+        ls.column = ls.column + 1
+    else
+        nb = nb - 1
+    end
+    lastbytes = nb
+
     return c
 end
 local next_line = function(ls)
@@ -108,6 +127,7 @@ local next_line = function(ls)
         next_char(ls)
     end
 
+    ls.column = 0
     ls.line_number = ls.line_number + 1
 end
 
@@ -608,6 +628,7 @@ return {
             current     = skip_shebang(reader), -- the current character
             line_number = 1,        -- the current line number
             last_line   = 1,        -- previous line number
+            column      = 0,        -- the current column
             lex         = wrap(lex) -- the lexer coroutine used by this state
         }, State_MT)
     end,
