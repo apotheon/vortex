@@ -26,7 +26,7 @@ local compile_all = function(args)
             return 1
         end
 
-        local st = util.file_istream(rs)
+        local st = rs:read("*all")
         io.close(rs)
 
         local stat, ret = vxpcall(parser.parse, ifname, st)

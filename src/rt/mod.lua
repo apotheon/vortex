@@ -26,7 +26,7 @@ table.insert(package.searchers, 2, function(modname)
     if not path then return err end
     local file = io_open(path, "rb")
     if file then
-        local st = ifstream(file)
+        local st = file:read("*all")
         io_close(file)
         local stat, ret = vxpcall(parse, path, st)
         if not stat then return ret end

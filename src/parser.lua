@@ -3022,15 +3022,14 @@ local parse_macro = function(ls)
     macros[name] = { args, parse_expr(ls) }
 end
 
-local parse = function(fname, reader)
-    if not reader then
+local parse = function(fname, input)
+    if not input then
         local str = fname
         fname  = '[string \"' .. fname:match("[^\r\n]*"):sub(1, 63) .. '"]'
-        reader = util.string_stream(str)
-    elseif type(reader) == "string" then
-        reader = util.string_stream(reader)
+        input = str
     end
-    local ls = lexer.init(fname, reader)
+
+    local ls = lexer.init(fname, input)
     ls.ndstack, ls.fnstack, ls.lpstack = Stack(), Stack(), Stack()
     -- global scope
     ls.fnstack:push({ vararg = false })

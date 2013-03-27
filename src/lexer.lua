@@ -15,6 +15,7 @@ local is_ident     = util.is_ident
 local is_alnum     = util.is_alnum
 local is_digit     = util.is_digit
 local is_hex_digit = util.is_hex_digit 
+local strstream    = util.string_stream
 local fatal        = util.fatal
 local concat       = table.concat
 local Stack        = util.Stack
@@ -81,10 +82,12 @@ local kwops = {
 }
 
 local lex_error = function(ls, msg, value)
-    msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, ls.column, msg)
+    local col = ls.column
+    msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, col, msg)
     if value then
         msg = msg .. " near '" .. value .. "'"
     end
+    msg = msg .. "\n" .. ls.line .. "\n" .. (" "):rep(col - 1) .. "^"
     fatal(msg)
 end
 
@@ -100,7 +103,18 @@ end
 local lastbytes = 0
 
 local next_char = function(ls)
-    local c = ls.reader()
+    local  c = ls.reader()
+    if not c then
+        -- time for a new reader, maybe?
+        local l, lst = ls.lines()
+        if l then
+            c = "\n"
+            ls.line, ls.reader = l, lst
+        else
+            ls.current = nil
+            return nil
+        end
+    end
     ls.current = c
 
     local nb = lastbytes
@@ -613,9 +627,21 @@ end
 
 return {
     -- sets up the lexer state
-    init = function(fname, reader)
+    init = function(fname, input)
+        local lines = input:gmatch("[^\r\n]+")
+        local linef = function()
+            local line = lines()
+            if line then
+                return line, strstream(line)
+            end
+        end
+
+        local l, ls = linef()
+
         return setmetatable({
-            reader      = reader,   -- the input character stream, UTF-8 aware
+            reader      = ls,       -- the current line (stream)
+            line        = l,        -- the current line (string)
+            lines       = linef,    -- the line stream
             token       = {         -- the token, contains name and its
                 name    = nil,      -- semantic value (i.e. a string literal)
                 value   = nil
@@ -625,7 +651,7 @@ return {
                 value   = nil 
             },
             source      = fname,    -- the source (a filename or stdin or w/e)
-            current     = skip_shebang(reader), -- the current character
+            current     = skip_shebang(ls), -- the current character
             line_number = 1,        -- the current line number
             last_line   = 1,        -- previous line number
             column      = 0,        -- the current column
