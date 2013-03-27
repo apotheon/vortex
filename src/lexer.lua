@@ -94,7 +94,7 @@ end
 
 local get_nbytes = function(ch)
     local i = ch:byte()
-    return (i >= 240) and 4 or ((i >= 224) and 3 or ((i >= 192) and 2 or 1))
+    return (i < 192) and 1 or ((i < 224) and 2 or ((i < 240) and 3 or 4))
 end
 
 local lastbytes = 0
