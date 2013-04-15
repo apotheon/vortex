@@ -81,13 +81,21 @@ local kwops = {
     ["bsl" ] = true
 }
 
+local next_char
+
 local lex_error = function(ls, msg, value)
     local col = ls.column
     msg = ("%s:%d:%d: %s"):format(ls.source, ls.line_number, col, msg)
     if value then
         msg = msg .. " near '" .. value .. "'"
     end
-    msg = msg .. "\n" .. ls.line .. "\n" .. (" "):rep(col - 1) .. "^"
+    -- read into linebuf, we can abandon the stream in any case
+    local lbuf = ls.linebuf
+    repeat
+        local  c = next_char(ls)
+        if not c then lbuf[#lbuf + 1] = "\n" end
+    until not c or is_newline(c)
+    msg = msg .. "\n" .. concat(lbuf) .. (" "):rep(col - 1) .. "^"
     fatal(msg)
 end
 
@@ -102,20 +110,15 @@ end
 
 local lastbytes = 0
 
-local next_char = function(ls)
+next_char = function(ls)
     local  c = ls.reader()
-    if not c then
-        -- time for a new reader, maybe?
-        local l, lst = ls.lines()
-        if l then
-            c = "\n"
-            ls.line, ls.reader = l, lst
-        else
-            ls.current = nil
-            return nil
-        end
-    end
     ls.current = c
+    if not c then
+        return nil -- EOS
+    end
+
+    local lbuf = ls.linebuf
+    lbuf[#lbuf + 1] = c
 
     local nb = lastbytes
     if nb == 0 then nb = get_nbytes(c) end
@@ -143,6 +146,7 @@ local next_line = function(ls)
 
     ls.column = 0
     ls.line_number = ls.line_number + 1
+    ls.linebuf = { ls.current }
 end
 
 local save_and_next_char = function(ls, buf)
@@ -628,20 +632,11 @@ end
 return {
     -- sets up the lexer state
     init = function(fname, input)
-        local lines = input:gmatch("[^\r\n]+")
-        local linef = function()
-            local line = lines()
-            if line then
-                return line, strstream(line)
-            end
-        end
-
-        local l, ls = linef()
-
+        local reader  = strstream(input)
+        local current = skip_shebang(reader)
         return setmetatable({
-            reader      = ls,       -- the current line (stream)
-            line        = l,        -- the current line (string)
-            lines       = linef,    -- the line stream
+            reader      = reader,   -- the current line (stream)
+            linebuf     = { current }, -- the current line buffer
             token       = {         -- the token, contains name and its
                 name    = nil,      -- semantic value (i.e. a string literal)
                 value   = nil
@@ -651,7 +646,7 @@ return {
                 value   = nil 
             },
             source      = fname,    -- the source (a filename or stdin or w/e)
-            current     = skip_shebang(ls), -- the current character
+            current     = current,  -- the current character
             line_number = 1,        -- the current line number
             last_line   = 1,        -- previous line number
             column      = 0,        -- the current column
