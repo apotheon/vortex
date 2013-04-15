@@ -160,10 +160,15 @@ fn input_load_line() do
     let (f, err) = nil
     loop while true do
         with (stat, ret) = pcall(parser.parse, "stdin", line) do
-            if not stat -> if not input_incomplete(ret) do
-                set (f, err) = (nil, ret)
-                break
-            end else do
+            if not stat do
+                let bs = line:sub(#line) == "\\"
+                if not input_incomplete(ret) and not bs do
+                    set (f, err) = (nil, ret)
+                    break
+                else if bs do
+                    line = line:sub(1, #line - 1)
+                end
+            else do
                 set (f, err) = load(make_input_line(line),
                     "=stdin", nil, repl_env)
                 break
